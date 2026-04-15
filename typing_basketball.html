@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>タイピングバスケ - 桜野ひかり</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
@@ -62,6 +63,8 @@
     .ub.auto .ub-rom  { color:#e8e8e8; font-size:0.58rem; }
     .ub.rest .ub-kana { color:#888; }
     .ub.rest .ub-rom  { color:#bbb; }
+    .ub.miss .ub-kana { color:#e03030!important; background:rgba(224,48,48,0.12)!important; border:2px solid rgba(224,48,48,0.5)!important; animation:missPulse 0.3s ease; }
+    @keyframes missPulse { 0%{transform:translateX(-4px) translateY(-4px);}50%{transform:translateX(4px) translateY(-4px);}100%{transform:translateX(0) translateY(-4px);} }
 
     /* ローマ字バッファ + ガイド */
     #romajiLine { display:flex; align-items:center; gap:14px; min-height:24px; }
@@ -189,11 +192,17 @@
   </div>
   <h1>タイピングバスケ</h1>
   <div class="stage-rules">
-    🏀 <b>Stage 1</b>：1かなで1球 ／ ゴール固定 ／ 15単語<br>
-    🏀 <b>Stage 2</b>：2かなで1球 ／ ゴール左右 ／ 10単語<br>
-    🏀 <b>Stage 3</b>：3かなで1球 ／ ゴール不規則 ／ 5単語<br>
+    🏀 <b>Stage 1</b>：1かなで1球 ／ ゴール固定 ／ 15単語 ／ 命中率<b>80%</b>でクリア<br>
+    🏀 <b>Stage 2</b>：2かなで1球 ／ ゴール左右 ／ 15単語 ／ <b>5ゴール</b>でクリア<br>
+    🏀 <b>Stage 3</b>：3かなで1球 ／ ゴール不規則 ／ 15単語 ／ <b>8ゴール</b>でクリア<br>
     ⌨️ ローマ字入力　例）し→shi　っ→次の子音×2(tt,kk…)　ー→自動<br>
-    🎯 命中率 <b>50%以上</b> でクリア → 次のステージへ！
+    🎯 ミスすると球は飛ばない！ノーミス単語で<b>ボーナス単語追加</b>！
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+    <label style="font-size:0.88rem;color:#c04080;font-weight:bold">あなたの名前を入力してね 🌸</label>
+    <input id="playerNameInput" type="text" maxlength="16" placeholder="名前（16文字まで）"
+      style="padding:8px 16px;border:2px solid #ffb7d5;border-radius:20px;font-size:1rem;
+             text-align:center;outline:none;font-family:'Meiryo',sans-serif;width:220px">
   </div>
   <button class="btn orange" id="startBtn">ゲームスタート！ 🏀</button>
 </div>
@@ -218,7 +227,7 @@
   <div class="stat-row">
     <div class="stat-box"><div class="stat-val" id="resSc">0</div><div class="stat-lbl">成功</div></div>
     <div class="stat-box"><div class="stat-val" id="resAtt">0</div><div class="stat-lbl">シュート数</div></div>
-    <div class="stat-box"><div class="stat-val" id="resAcc">0%</div><div class="stat-lbl">命中率</div></div>
+    <div class="stat-box"><div class="stat-val" id="resAcc">0%</div><div class="stat-lbl" id="resAccLbl">命中率</div></div>
   </div>
   <div class="btn-row">
     <button class="btn red"    id="retryBtn"  style="display:none">もう一度挑戦 🔄</button>
@@ -248,10 +257,101 @@
     <div class="stat-box"><div class="stat-val" id="finAtt">0</div><div class="stat-lbl">総シュート</div></div>
     <div class="stat-box"><div class="stat-val" id="finAcc">0%</div><div class="stat-lbl">総命中率</div></div>
   </div>
+  <div id="leaderboardSection" style="display:none">
+    <h3 style="color:#c04080;font-size:1rem;margin:8px 0 4px">🏆 ランキング TOP 10</h3>
+    <div id="leaderboardList" style="font-size:0.82rem;width:340px;max-height:180px;overflow-y:auto"></div>
+  </div>
   <button class="btn orange" id="replayBtn">もう一度プレイ 🌸</button>
 </div>
 
 <script>
+// =====================================================================
+//  SUPABASE 設定（あなたのプロジェクトのURLとAnonキーに書き換えてください）
+// =====================================================================
+const SUPABASE_URL      = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const supabaseClient = (typeof supabase !== 'undefined')
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+const DB_ENABLED = supabaseClient !== null && SUPABASE_URL !== 'YOUR_SUPABASE_URL';
+
+function getPlayerId(){
+  let id = localStorage.getItem('sakura_player_id');
+  if(!id){ id = crypto.randomUUID(); localStorage.setItem('sakura_player_id', id); }
+  return id;
+}
+
+async function initSession(){
+  if(!DB_ENABLED) return;
+  playerId = getPlayerId();
+  try{
+    const { data } = await supabaseClient.from('game_sessions').insert({
+      player_name: playerName,
+      player_id: playerId
+    }).select('id').single();
+    if(data) sessionId = data.id;
+  }catch(err){ console.warn('Supabase initSession error:', err); }
+}
+
+async function saveStageResult(stageIndex, cleared, score, attempts){
+  if(!DB_ENABLED) return;
+  const cfg = STAGE_CFG[stageIndex];
+  const acc = attempts > 0 ? Math.round(score / attempts * 100) : 0;
+  try{
+    await supabaseClient.from('stage_results').insert({
+      session_id:   sessionId || null,
+      player_name:  playerName,
+      player_id:    playerId,
+      stage_num:    stageIndex + 1,
+      cleared,
+      score,
+      attempts,
+      accuracy:     cfg.clearMode === 'accuracy' ? acc : null,
+      goals_scored: cfg.clearMode === 'goals'    ? score : null
+    });
+  }catch(err){ console.warn('Supabase saveStageResult error:', err); }
+}
+
+async function saveGameSession(stagesCleared, finalRank){
+  if(!DB_ENABLED || !sessionId) return;
+  try{
+    await supabaseClient.from('game_sessions').update({
+      completed_at:   new Date().toISOString(),
+      stages_cleared: stagesCleared,
+      final_rank:     finalRank,
+      total_score:    totalSc,
+      total_attempts: totalAtt
+    }).eq('id', sessionId);
+  }catch(err){ console.warn('Supabase saveGameSession error:', err); }
+}
+
+async function loadLeaderboard(){
+  if(!DB_ENABLED) return;
+  try{
+    const { data } = await supabaseClient.from('game_sessions')
+      .select('player_name, stages_cleared, total_score, total_attempts, completed_at')
+      .not('completed_at', 'is', null)
+      .order('stages_cleared', { ascending: false })
+      .order('total_score', { ascending: false })
+      .limit(10);
+    if(!data || data.length === 0) return;
+    const list = document.getElementById('leaderboardList');
+    const rows = data.map((r, i) => {
+      const acc = r.total_attempts > 0
+        ? Math.round(r.total_score / r.total_attempts * 100) : 0;
+      const date = r.completed_at ? new Date(r.completed_at).toLocaleDateString('ja-JP') : '';
+      return `<div style="display:flex;justify-content:space-between;padding:3px 6px;
+        background:${i%2===0?'rgba(255,183,213,0.15)':'transparent'};border-radius:4px">
+        <span>${i+1}. <b>${r.player_name}</b></span>
+        <span>${r.stages_cleared}ステージ / ${r.total_score}ゴール / ${acc}%</span>
+        <span style="color:#aaa">${date}</span>
+      </div>`;
+    }).join('');
+    list.innerHTML = rows;
+    document.getElementById('leaderboardSection').style.display = 'block';
+  }catch(err){ console.warn('Supabase loadLeaderboard error:', err); }
+}
+
 // =====================================================================
 //  ROMAJI → HIRAGANA テーブル
 // =====================================================================
@@ -343,12 +443,10 @@ function hintOf(i,units){
 //  wordsPerStage: Stage1=15, Stage2=10, Stage3=5
 //  clearThreshold: 命中率50%以上でクリア
 // =====================================================================
-const CLEAR_THRESHOLD=50; // %
-
 const STAGE_CFG=[
   {
     id:1, label:'Stage 1', charsPerShot:1, goalMoving:false,
-    secPerChar:3, wordsPerStage:15,
+    secPerChar:3, wordsPerStage:15, clearMode:'accuracy', clearValue:80,
     pool:[
       {d:'さくら',    r:'さくら'},
       {d:'ひかり',    r:'ひかり'},
@@ -374,7 +472,7 @@ const STAGE_CFG=[
   },
   {
     id:2, label:'Stage 2', charsPerShot:2, goalMoving:'horizontal',
-    secPerChar:2.8, wordsPerStage:10,
+    secPerChar:2.8, wordsPerStage:15, clearMode:'goals', clearValue:5,
     pool:[
       {d:'プログラム',      r:'ぷろぐらむ'},
       {d:'アルゴリズム',    r:'あるごりずむ'},
@@ -400,7 +498,7 @@ const STAGE_CFG=[
   },
   {
     id:3, label:'Stage 3', charsPerShot:3, goalMoving:'lissajous',
-    secPerChar:2.5, wordsPerStage:5,
+    secPerChar:2.5, wordsPerStage:15, clearMode:'goals', clearValue:8,
     pool:[
       {d:'さくらコミュニケーション', r:'さくらこみゅにけーしょん'},
       {d:'ソフトウェアエンジニア',   r:'そふとうぇあえんじにあ'},
@@ -412,6 +510,16 @@ const STAGE_CFG=[
       {d:'継続的インテグレーション', r:'けいぞくてきいんてぐれーしょん'},
       {d:'マイクロサービス',         r:'まいくろさーびす'},
       {d:'コンテナ仮想化技術',       r:'こんてなかそうかぎじゅつ'},
+      {d:'ネットワークセキュリティ', r:'ねっとわーくせきゅりてぃ'},
+      {d:'リファクタリング',         r:'りふぁくたりんぐ'},
+      {d:'ドメイン駆動設計',         r:'どめいんくどうせっけい'},
+      {d:'インフラストラクチャー',   r:'いんふらすとらくちゃー'},
+      {d:'ビルドパイプライン',       r:'びるどぱいぷらいん'},
+      {d:'テスト駆動開発',           r:'てすとくどうかいはつ'},
+      {d:'サービスメッシュ',         r:'さーびすめっしゅ'},
+      {d:'オーケストレーション',     r:'おーけすとれーしょん'},
+      {d:'ロードバランシング',       r:'ろーどばらんしんぐ'},
+      {d:'エンドポイント設計',       r:'えんどぽいんとせっけい'},
     ]
   }
 ];
@@ -442,6 +550,7 @@ resizeCanvas(); window.addEventListener('resize',resizeCanvas);
 //  STATE
 // =====================================================================
 const GRAVITY=0.2;
+let playerName='', playerId='', sessionId='';
 let stageIdx=0, stageWords=[];
 let wordIdx=0, typedCount=0;
 let stageSc=0, stageAtt=0, totalSc=0, totalAtt=0;
@@ -449,6 +558,8 @@ let balls=[], particles=[];
 let goalX=0, goalY=0, lissT=0;
 let running=false, animId;
 let rBuf='';
+let missedUnit=false, wordHadMiss=false, cleanCount=0;
+let stagePoolRemaining=[];
 let wordTimeLimit=0, wordTimeLeft=0, lastTick=0, lastGameTime=0;
 
 // =====================================================================
@@ -484,6 +595,7 @@ function pushRomaji(key){
 
 // =====================================================================
 //  KANA 判定（ユニット単位で比較）
+//  ミスしたらボールは飛ばない。ノーミス単語でボーナス。
 // =====================================================================
 function onKana(kana){
   const word=stageWords[wordIdx];
@@ -493,27 +605,57 @@ function onKana(kana){
   if(typedCount>=units.length) return;
 
   if(kana===units[typedCount]){
+    const cfg=STAGE_CFG[stageIdx];
+    const wasClean=!missedUnit;   // このユニットをミスなしで打てたか
+    if(wasClean) cleanCount++;
+    missedUnit=false;
+
     typedCount++;
     while(typedCount<units.length&&units[typedCount]==='ー') typedCount++;
-    const cfg=STAGE_CFG[stageIdx];
+
     const nonNow  =units.slice(0,typedCount).filter(u=>u!=='ー').length;
     const nonTotal=effLen(units);
-    if(nonNow%cfg.charsPerShot===0) shootBall(kana.slice(-1));
+
     if(nonNow>=nonTotal){
-      if(nonTotal%cfg.charsPerShot!==0) shootBall(kana.slice(-1));
+      // 単語完了：バッチちょうど or 余り分の球を飛ばす
+      if(wasClean && cleanCount%cfg.charsPerShot===0) shootBall(kana.slice(-1));
+      else if(cleanCount>0 && cleanCount%cfg.charsPerShot!==0) shootBall(kana.slice(-1));
       onWordComplete(); return;
+    } else {
+      // 途中：バッチ完了時だけ球を飛ばす
+      if(wasClean && cleanCount%cfg.charsPerShot===0) shootBall(kana.slice(-1));
     }
+  } else {
+    // ミス：このユニットの球を失い、ミスフラグを立てる
+    missedUnit=true; wordHadMiss=true;
+    rBuf='';
+    showMsg('ミス！','#e03030');
   }
   updateDisplay();
 }
 
 function onWordComplete(){
-  wordIdx++; typedCount=0; rBuf='';
+  const cfg=STAGE_CFG[stageIdx];
+  const wasWordPerfect=!wordHadMiss;
+  let bonusAdded=false;
+
+  // ノーミス単語ボーナス（Stage2/3のみ）：プールから1単語追加
+  if(wasWordPerfect && cfg.clearMode==='goals' && stagePoolRemaining.length>0){
+    stageWords.push(stagePoolRemaining.shift());
+    bonusAdded=true;
+  }
+
+  wordIdx++; typedCount=0; rBuf=''; missedUnit=false; wordHadMiss=false; cleanCount=0;
+
   if(wordIdx>=stageWords.length){
     running=false;
     setTimeout(showResult,700);
   } else {
-    showMsg('ナイス！🌸','#c04080');
+    if(wasWordPerfect && cfg.clearMode==='goals'){
+      showMsg(bonusAdded?'パーフェクト！ボーナス単語 🌟':'パーフェクト！ 🌟','#9030c0');
+    } else {
+      showMsg('ナイス！🌸','#c04080');
+    }
     startWordTimer(); updateDisplay(); updateUI();
   }
 }
@@ -536,7 +678,7 @@ function updateDisplay(){
   let uhtml='';
   for(let i=0;i<units.length;i++){
     const u=units[i];
-    let cls= u==='ー'?'auto': i<typedCount?'done': i===typedCount?'next':'rest';
+    let cls= u==='ー'?'auto': i<typedCount?'done': i===typedCount?(missedUnit?'next miss':'next'):'rest';
     // ★ 表示文字はカタカナ（またはひらがな）に変換
     const disp=displayUnit(word,u);
     const hint=hintOf(i,units);
@@ -567,9 +709,13 @@ function updateDisplay(){
 function updateUI(){
   const cfg=STAGE_CFG[stageIdx];
   document.getElementById('uiStage').textContent=cfg.label;
-  const acc=stageAtt>0?Math.round(stageSc/stageAtt*100):null;
-  document.getElementById('uiScore').textContent=
-    `スコア: ${stageSc}/${stageAtt}${acc!==null?` (${acc}%)` :''}`;
+  if(cfg.clearMode==='goals'){
+    document.getElementById('uiScore').textContent=`ゴール: ${stageSc} / ${cfg.clearValue} 🏀`;
+  } else {
+    const acc=stageAtt>0?Math.round(stageSc/stageAtt*100):null;
+    document.getElementById('uiScore').textContent=
+      `スコア: ${stageSc}/${stageAtt}${acc!==null?` (${acc}%)` :''}`;
+  }
 }
 
 // =====================================================================
@@ -593,7 +739,7 @@ function tickTimer(){
   fill.style.background=pct>60?'#5cc060':pct>30?'#e07030':'#e03030';
   if(wordTimeLeft<=0){
     showMsg('タイムアップ！⏰','#cc4488');
-    rBuf=''; typedCount=0; wordIdx++;
+    rBuf=''; typedCount=0; missedUnit=false; wordHadMiss=false; cleanCount=0; wordIdx++;
     if(wordIdx>=stageWords.length){ running=false; setTimeout(showResult,700); }
     else{ startWordTimer(); updateDisplay(); updateUI(); }
   }
@@ -722,14 +868,16 @@ function showMsg(t,c){
 //  RESULT（クリア / 失敗 共用）
 // =====================================================================
 function showResult(){
-  const acc=stageAtt>0?Math.round(stageSc/stageAtt*100):0;
-  const cleared=acc>=CLEAR_THRESHOLD;
-  const p=getPrize(acc);
   const cfg=STAGE_CFG[stageIdx];
+  const acc=stageAtt>0?Math.round(stageSc/stageAtt*100):0;
+  // ★ クリア判定：Stage1=命中率80%以上、Stage2/3=ゴール数
+  const cleared=cfg.clearMode==='goals' ? stageSc>=cfg.clearValue : acc>=cfg.clearValue;
+  const p=getPrize(acc);
   const isLast=stageIdx>=STAGE_CFG.length-1;
 
-  // クリア時だけ total に加算
-  if(cleared){ totalSc+=stageSc; totalAtt+=stageAtt; }
+  // totalSc / totalAtt はゲームループ中にリアルタイム加算済みなので
+  // 失敗時はそのステージ分を差し引く
+  if(!cleared){ totalSc-=stageSc; totalAtt-=stageAtt; }
 
   document.getElementById('resName').textContent=`${cfg.label} ${cleared?'クリア！':'失敗…'}`;
   document.getElementById('resHMsg').textContent=getHMsg(acc,cleared);
@@ -746,11 +894,24 @@ function showResult(){
   rankEl.textContent=`Rank ${p.rank}`;
   rankEl.className='prize-rank'+(cleared?'':' fail');
   document.getElementById('resPTitle').textContent=cleared?p.title:'クリアできませんでした';
-  document.getElementById('resPDesc').textContent=cleared?p.desc:`命中率${acc}%でした（50%以上でクリア）`;
+
+  // 失敗時のメッセージをステージ種別で分ける
+  let failDesc;
+  if(cfg.clearMode==='goals'){
+    const need=cfg.clearValue-stageSc;
+    failDesc=`${stageSc}ゴール（クリアまであと${need>0?need:0}ゴール）`;
+  } else {
+    failDesc=`命中率${acc}%でした（${cfg.clearValue}%以上でクリア）`;
+  }
+  document.getElementById('resPDesc').textContent=cleared?p.desc:failDesc;
 
   document.getElementById('resSc').textContent=stageSc;
   document.getElementById('resAtt').textContent=stageAtt;
-  document.getElementById('resAcc').textContent=acc+'%';
+  // Stage2/3はゴール数/目標を表示、Stage1は命中率
+  const isGoalsMode=cfg.clearMode==='goals';
+  document.getElementById('resAccLbl').textContent=isGoalsMode?'ゴール':'命中率';
+  document.getElementById('resAcc').textContent=
+    isGoalsMode?`${stageSc}/${cfg.clearValue}🏀`:acc+'%';
 
   // ボタン制御
   document.getElementById('retryBtn').style.display =cleared?'none':'inline-block';
@@ -758,6 +919,9 @@ function showResult(){
   document.getElementById('finishBtn').style.display =(cleared&&isLast)?'inline-block':'none';
 
   document.getElementById('resultScreen').style.display='flex';
+
+  // Supabase: ステージ結果を保存
+  saveStageResult(stageIdx, cleared, stageSc, stageAtt);
 }
 
 document.getElementById('retryBtn').addEventListener('click',()=>{
@@ -790,27 +954,41 @@ function showFinalClear(){
   document.getElementById('finAtt').textContent=totalAtt;
   document.getElementById('finAcc').textContent=acc+'%';
   document.getElementById('finalScreen').style.display='flex';
+
+  // Supabase: ゲームセッション完了を保存、リーダーボード表示
+  saveGameSession(STAGE_CFG.length, p.rank);
+  loadLeaderboard();
 }
 
-document.getElementById('replayBtn').addEventListener('click',()=>{
+document.getElementById('replayBtn').addEventListener('click', async ()=>{
   document.getElementById('finalScreen').style.display='none';
+  document.getElementById('leaderboardSection').style.display='none';
+  document.getElementById('leaderboardList').innerHTML='';
+  sessionId='';
+  await initSession();
   stageIdx=0; totalSc=0; totalAtt=0; startStage();
 });
 
 // =====================================================================
 //  START
 // =====================================================================
-document.getElementById('startBtn').addEventListener('click',()=>{
-  document.getElementById('startScreen').style.display='none'; startStage();
+document.getElementById('startBtn').addEventListener('click', async ()=>{
+  const nameInput = document.getElementById('playerNameInput');
+  playerName = (nameInput.value||'').trim() || '名無しさん';
+  document.getElementById('startScreen').style.display='none';
+  await initSession();
+  stageIdx=0; totalSc=0; totalAtt=0;
+  startStage();
 });
 
 function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
 
 function startStage(){
   const cfg=STAGE_CFG[stageIdx];
-  stageWords=shuffle(cfg.pool).slice(0,cfg.wordsPerStage)
-    .map(w=>({...w,units:splitReading(w.r)}));
-  wordIdx=0; typedCount=0; rBuf='';
+  const shuffled=shuffle(cfg.pool);
+  stageWords=shuffled.slice(0,cfg.wordsPerStage).map(w=>({...w,units:splitReading(w.r)}));
+  stagePoolRemaining=shuffled.slice(cfg.wordsPerStage).map(w=>({...w,units:splitReading(w.r)}));
+  wordIdx=0; typedCount=0; rBuf=''; missedUnit=false; wordHadMiss=false; cleanCount=0;
   stageSc=0; stageAtt=0;
   balls=[]; particles=[];
   initGoal(); startWordTimer();

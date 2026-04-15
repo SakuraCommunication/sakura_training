@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>タイピングバスケ 〜 桜野ひかりと特訓！</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background: linear-gradient(135deg, #ffe6f0 0%, #ffd6e8 40%, #fff0e6 100%);
+      font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow: hidden;
+    }
+    .petal {
+      position: fixed; background: #ffb7d5; border-radius: 50% 0 50% 0;
+      pointer-events: none; animation: fall linear infinite; z-index: 0;
+    }
+    @keyframes fall {
+      0%  { transform: translateY(-20px) rotate(0deg); opacity: 0.7; }
+      100%{ transform: translateY(110vh) rotate(720deg); opacity: 0; }
+    }
+    .card {
+      background: rgba(255,255,255,0.92);
+      border-radius: 28px;
+      padding: 40px 48px;
+      box-shadow: 0 8px 40px rgba(192,64,128,0.18);
+      border: 3px solid #ffb7d5;
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+    .hikari-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      background: linear-gradient(135deg, #ffe6f0, #ffd6e8);
+      border-radius: 40px;
+      padding: 12px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(192,64,128,0.15);
+    }
+    .hikari-face {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: linear-gradient(135deg, #ffcce0, #ffd9a8);
+      border: 3px solid #ffb7d5;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+    }
+    .hikari-name { font-size: 1rem; color: #c04080; font-weight: bold; text-align: left; }
+    .hikari-sub  { font-size: 0.8rem; color: #e07030; text-align: left; }
+    h1 {
+      font-size: 2.2rem;
+      color: #c04080;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+    .subtitle {
+      font-size: 1rem;
+      color: #e07030;
+      margin-bottom: 24px;
+    }
+    .desc {
+      background: rgba(255,183,213,0.15);
+      border: 2px solid #ffd6e8;
+      border-radius: 14px;
+      padding: 16px 20px;
+      font-size: 0.9rem;
+      color: #555;
+      line-height: 2;
+      text-align: left;
+      margin-bottom: 28px;
+    }
+    .desc b { color: #c04080; }
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      align-items: center;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 16px 48px;
+      font-size: 1.15rem;
+      font-weight: bold;
+      color: white;
+      border: none;
+      border-radius: 40px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+      width: 300px;
+    }
+    .btn.primary {
+      background: linear-gradient(135deg, #c04080, #e07030);
+      box-shadow: 0 6px 20px rgba(192,64,128,0.35);
+    }
+    .btn.secondary {
+      background: linear-gradient(135deg, #e07030, #ff9050);
+      box-shadow: 0 6px 20px rgba(224,112,48,0.3);
+    }
+    .btn:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(192,64,128,0.3); }
+    .btn:active { transform: translateY(0); }
+    .stages {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+    .stage-chip {
+      background: white;
+      border: 2px solid #ffb7d5;
+      border-radius: 12px;
+      padding: 8px 14px;
+      font-size: 0.8rem;
+      color: #555;
+      text-align: center;
+      flex: 1;
+    }
+    .stage-chip .num { font-size: 1rem; font-weight: bold; color: #c04080; display: block; }
+    .stage-chip .goal { font-size: 0.72rem; color: #e07030; }
+    footer {
+      margin-top: 24px;
+      font-size: 0.78rem;
+      color: #c04080;
+      opacity: 0.7;
+      position: relative;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+
+<script>
+for(let i=0;i<14;i++){
+  const el=document.createElement('div');
+  el.className='petal';
+  const s=Math.random()*14+6;
+  el.style.cssText=`width:${s}px;height:${s}px;left:${Math.random()*100}vw;
+    top:-20px;animation-duration:${Math.random()*9+5}s;
+    animation-delay:-${Math.random()*12}s;opacity:${Math.random()*0.5+0.2}`;
+  document.body.appendChild(el);
+}
+</script>
+
+<div class="card">
+  <div class="hikari-badge">
+    <div class="hikari-face">🌸</div>
+    <div>
+      <div class="hikari-name">桜野ひかり（22歳 SE）</div>
+      <div class="hikari-sub">株式会社さくらコミュニケーション</div>
+    </div>
+  </div>
+
+  <h1>タイピングバスケ</h1>
+  <div class="subtitle">〜 桜野ひかりと特訓！ 〜</div>
+
+  <div class="desc">
+    ローマ字タイピングでバスケのボールを打って
+    <b>ゴールを決めよう！</b><br>
+    🏀 <b>ミスすると球は飛ばない</b>ので、正確さが重要です。<br>
+    🌟 <b>ノーミス単語</b>を達成するとボーナス単語が追加されます！<br>
+    ⌨️ 入力例：し→<b>shi</b>　っ→<b>次の子音×2</b>（tt, kkなど）
+  </div>
+
+  <div class="stages">
+    <div class="stage-chip">
+      <span class="num">Stage 1</span>
+      1かなで1球<br>
+      <span class="goal">命中率80%でクリア</span>
+    </div>
+    <div class="stage-chip">
+      <span class="num">Stage 2</span>
+      2かなで1球<br>
+      <span class="goal">5ゴールでクリア</span>
+    </div>
+    <div class="stage-chip">
+      <span class="num">Stage 3</span>
+      3かなで1球<br>
+      <span class="goal">8ゴールでクリア</span>
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <a href="typing_basketball.html" class="btn primary">🏀 ゲームをプレイ</a>
+    <a href="dashboard.html" class="btn secondary">📊 ダッシュボード</a>
+  </div>
+</div>
+
+<footer>作：株式会社さくらコミュニケーション SE部門 飯澤</footer>
+
+</body>
+</html>
