@@ -192,7 +192,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = (typeof supabase !== 'undefined')
   ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
-const DB_ENABLED = supabaseClient !== null && SUPABASE_URL !== '' && !SUPABASE_URL.includes('YOUR_PROJECT');
+const DB_ENABLED = supabaseClient !== null && typeof SUPABASE_URL === 'string' && SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_');
 
 // =====================================================================
 //  サンプルデータ（DB未接続時に表示）

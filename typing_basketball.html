@@ -261,7 +261,10 @@
     <h3 style="color:#c04080;font-size:1rem;margin:8px 0 4px">🏆 ランキング TOP 10</h3>
     <div id="leaderboardList" style="font-size:0.82rem;width:340px;max-height:180px;overflow-y:auto"></div>
   </div>
-  <button class="btn orange" id="replayBtn">もう一度プレイ 🌸</button>
+  <div class="btn-row">
+    <button class="btn orange" id="replayBtn">もう一度プレイ 🌸</button>
+    <button class="btn" id="titleBtn" style="background:linear-gradient(135deg,#aaa,#ccc);box-shadow:none">タイトルへ 🏠</button>
+  </div>
 </div>
 
 <script>
@@ -273,7 +276,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = (typeof supabase !== 'undefined')
   ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
-const DB_ENABLED = supabaseClient !== null && SUPABASE_URL !== 'https://jkcknhvuhuogfmdiceuj.supabase.co';
+const DB_ENABLED = supabaseClient !== null && typeof SUPABASE_URL === 'string' && SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_');
 
 function getPlayerId(){
   let id = localStorage.getItem('sakura_player_id');
@@ -359,6 +362,7 @@ const RT = {};
 [
   'sha,しゃ','shi,し','shu,しゅ','sho,しょ','she,しぇ',
   'chi,ち','cha,ちゃ','chu,ちゅ','cho,ちょ','che,ちぇ','je,じぇ',
+  'tya,ちゃ','tyi,ちぃ','tyu,ちゅ','tyo,ちょ',
   'tsu,つ','thi,てぃ','dhi,でぃ',
   'kya,きゃ','kyu,きゅ','kyo,きょ',
   'nya,にゃ','nyu,にゅ','nyo,にょ',
@@ -577,63 +581,53 @@ document.addEventListener('keydown',(e)=>{
 },true);
 
 function pushRomaji(key){
-  rBuf+=key;
-  let changed=true;
-  while(changed&&rBuf.length>0){
-    changed=false;
-    if(rBuf.slice(0,2)==='nn'){ onKana('ん'); rBuf=rBuf.slice(2); changed=true; continue; }
-    if(rBuf[0]==='n'&&rBuf.length>=2&&!'aiueon'.includes(rBuf[1])){
+  rBuf += key;
+
+  // --- メインの変換ループ ---
+  let changed = true;
+  while(changed && rBuf.length > 0){
+    changed = false;
+
+    // nn → ん
+    if(rBuf.slice(0,2)==='nn'){
+      onKana('ん'); rBuf=rBuf.slice(2); changed=true; continue;
+    }
+    // n + 子音 → ん（nの後が母音・n以外）
+    if(rBuf[0]==='n' && rBuf.length>=2 && !'aiueon'.includes(rBuf[1])){
       onKana('ん'); rBuf=rBuf.slice(1); changed=true; continue;
     }
-    if(rBuf.length>=2&&rBuf[0]===rBuf[1]&&!'aiueon'.includes(rBuf[0])&&rBuf[0]!=='n'){
+    // っ（同じ子音が連続、母音・n以外）
+    if(rBuf.length>=2 && rBuf[0]===rBuf[1] && !'aiueon'.includes(rBuf[0]) && rBuf[0]!=='n'){
       onKana('っ'); rBuf=rBuf.slice(1); changed=true; continue;
     }
-    let hit=false;
-    for(let len=Math.min(3,rBuf.length);len>=1;len--){
-      const seq=rBuf.slice(0,len);
-      if(RT[seq]&&!RTP.has(seq)){ onKana(RT[seq]); rBuf=rBuf.slice(len); changed=true; hit=true; break; }
+    // RT完全マッチ（最長優先）
+    let hit = false;
+    for(let len=Math.min(3,rBuf.length); len>=1; len--){
+      const seq = rBuf.slice(0,len);
+      if(RT[seq] && !RTP.has(seq)){
+        onKana(RT[seq]); rBuf=rBuf.slice(len); changed=true; hit=true; break;
+      }
     }
     if(!hit) break;
   }
 
-  // ★ バッファ検証：先頭から有効なプレフィックスがあるか確認
-  // なければ後ろから1文字ずつ削って再検証、それでもダメなら空にする
-  if(rBuf.length > 0){
-    // バッファ全体が有効なプレフィックスかチェック
-    const isValidPrefix = (buf) => {
-      if(buf.length === 0) return false;
-      // RTに完全マッチ
-      if(RT[buf]) return true;
-      // RTPにプレフィックスマッチ（将来的に完成する可能性あり）
-      if(RTP.has(buf)) return true;
-      // nn / n+子音パターン
-      if(buf === 'n') return true;
-      // っパターン（同じ子音が続く）
-      if(buf.length >= 1 && !'aiueon'.includes(buf[0]) && buf[0] !== 'n') return true;
-      return false;
-    };
+  // --- バッファ検証: 現在のバッファが有効なプレフィックスかチェック ---
+  // 有効 = RTに完全マッチ OR RTPに存在（将来マッチの可能性あり）OR 'n'単体 OR 子音単体（っ待ち）
+  function isValidBuf(buf){
+    if(buf.length === 0) return true;
+    if(RT[buf]) return true;        // 完全マッチ（まだ変換待ち）
+    if(RTP.has(buf)) return true;   // プレフィックス（続きを待てる）
+    if(buf === 'n') return true;    // ん待ち
+    // 子音単体（っ待ち、またはローマ字の先頭）
+    if(buf.length === 1 && !'aiueo'.includes(buf) && buf !== 'n') return true;
+    return false;
+  }
 
-    // 先頭1文字が有効か（そうでなければ全消し）
-    if(!isValidPrefix(rBuf.slice(0,1))){
-      rBuf = '';
-    } else {
-      // バッファ全体が有効プレフィックスかチェック
-      // 有効でなければ、最後に追加したキーを除いた部分まで戻す
-      let validLen = 0;
-      for(let len = 1; len <= rBuf.length; len++){
-        const seq = rBuf.slice(0, len);
-        if(RT[seq] || RTP.has(seq) || seq === 'n'){
-          validLen = len;
-        } else {
-          break;
-        }
-      }
-      if(validLen === 0){
-        rBuf = '';
-      } else if(validLen < rBuf.length){
-        // 有効な部分だけ残す（無効なサフィックスを切る）
-        rBuf = rBuf.slice(0, validLen);
-      }
+  if(!isValidBuf(rBuf)){
+    // バッファ全体が無効 → 最後に追加したキー(key)だけで再試行
+    rBuf = key;
+    if(!isValidBuf(rBuf)){
+      rBuf = ''; // 単体でも無効なら全クリア
     }
   }
 
@@ -1019,6 +1013,13 @@ document.getElementById('replayBtn').addEventListener('click', async ()=>{
   sessionId='';
   await initSession();
   stageIdx=0; totalSc=0; totalAtt=0; startStage();
+});
+
+document.getElementById('titleBtn').addEventListener('click',()=>{
+  document.getElementById('finalScreen').style.display='none';
+  document.getElementById('leaderboardSection').style.display='none';
+  document.getElementById('leaderboardList').innerHTML='';
+  document.getElementById('startScreen').style.display='flex';
 });
 
 // =====================================================================
