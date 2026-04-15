@@ -595,14 +595,48 @@ function pushRomaji(key){
     }
     if(!hit) break;
   }
-  // バッファが有効なプレフィックスでなければ即クリア
-  if(rBuf.length > 0) {
-    let valid = false;
-    for(let len=1; len<=rBuf.length; len++){
-      if(RTP.has(rBuf.slice(0,len)) || RT[rBuf.slice(0,len)]){ valid=true; break; }
+
+  // ★ バッファ検証：先頭から有効なプレフィックスがあるか確認
+  // なければ後ろから1文字ずつ削って再検証、それでもダメなら空にする
+  if(rBuf.length > 0){
+    // バッファ全体が有効なプレフィックスかチェック
+    const isValidPrefix = (buf) => {
+      if(buf.length === 0) return false;
+      // RTに完全マッチ
+      if(RT[buf]) return true;
+      // RTPにプレフィックスマッチ（将来的に完成する可能性あり）
+      if(RTP.has(buf)) return true;
+      // nn / n+子音パターン
+      if(buf === 'n') return true;
+      // っパターン（同じ子音が続く）
+      if(buf.length >= 1 && !'aiueon'.includes(buf[0]) && buf[0] !== 'n') return true;
+      return false;
+    };
+
+    // 先頭1文字が有効か（そうでなければ全消し）
+    if(!isValidPrefix(rBuf.slice(0,1))){
+      rBuf = '';
+    } else {
+      // バッファ全体が有効プレフィックスかチェック
+      // 有効でなければ、最後に追加したキーを除いた部分まで戻す
+      let validLen = 0;
+      for(let len = 1; len <= rBuf.length; len++){
+        const seq = rBuf.slice(0, len);
+        if(RT[seq] || RTP.has(seq) || seq === 'n'){
+          validLen = len;
+        } else {
+          break;
+        }
+      }
+      if(validLen === 0){
+        rBuf = '';
+      } else if(validLen < rBuf.length){
+        // 有効な部分だけ残す（無効なサフィックスを切る）
+        rBuf = rBuf.slice(0, validLen);
+      }
     }
-    if(!valid) rBuf = '';
   }
+
   updateDisplay();
 }
 

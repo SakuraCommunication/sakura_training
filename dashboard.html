@@ -192,7 +192,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = (typeof supabase !== 'undefined')
   ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
-const DB_ENABLED = supabaseClient !== null && SUPABASE_URL !== 'https://jkcknhvuhuogfmdiceuj.supabase.co';
+const DB_ENABLED = supabaseClient !== null && SUPABASE_URL !== '' && !SUPABASE_URL.includes('YOUR_PROJECT');
 
 // =====================================================================
 //  サンプルデータ（DB未接続時に表示）
@@ -398,11 +398,40 @@ async function loadAll(){
       .order('started_at', { ascending: false })
       .limit(20);
 
-    // ステージ統計（ビューから取得）
-    const { data: stageStats } = await supabaseClient
-      .from('stage_stats')
-      .select('*')
-      .order('stage_num');
+    // ステージ統計（stage_stats ビューから取得、なければ stage_results から集計）
+    let stageStats = null;
+    try {
+      const { data: viewData, error: viewErr } = await supabaseClient
+        .from('stage_stats')
+        .select('*')
+        .order('stage_num');
+      if(!viewErr && viewData && viewData.length > 0){
+        stageStats = viewData;
+      }
+    } catch(e){ /* ビューが存在しない場合は無視 */ }
+
+    if(!stageStats){
+      // stage_results から手動集計
+      const { data: srData } = await supabaseClient
+        .from('stage_results')
+        .select('stage_num, cleared, score, attempts, accuracy, goals_scored');
+      if(srData && srData.length > 0){
+        const byStage = {};
+        srData.forEach(r => {
+          if(!byStage[r.stage_num]) byStage[r.stage_num] = { stage_num: r.stage_num, total_plays: 0, cleared_count: 0, score_sum: 0 };
+          byStage[r.stage_num].total_plays++;
+          if(r.cleared) byStage[r.stage_num].cleared_count++;
+          byStage[r.stage_num].score_sum += (r.score || 0);
+        });
+        stageStats = Object.values(byStage).sort((a,b)=>a.stage_num-b.stage_num).map(s => ({
+          stage_num: s.stage_num,
+          total_plays: s.total_plays,
+          cleared_count: s.cleared_count,
+          clear_rate_pct: Math.round(s.cleared_count / s.total_plays * 100),
+          avg_score: Math.round(s.score_sum / s.total_plays)
+        }));
+      }
+    }
 
     renderSummary(allSessions || [], stageStats || []);
     renderStageChart(stageStats && stageStats.length > 0 ? stageStats : SAMPLE_STAGE_STATS);
