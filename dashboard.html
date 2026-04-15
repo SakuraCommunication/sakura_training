@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>タイピングバスケ ダッシュボード</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background: linear-gradient(135deg, #ffe6f0 0%, #ffd6e8 40%, #fff0e6 100%);
+      font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .petal {
+      position: fixed; background: #ffb7d5; border-radius: 50% 0 50% 0;
+      pointer-events: none; animation: fall linear infinite; z-index: 0;
+    }
+    @keyframes fall {
+      0%  { transform: translateY(-20px) rotate(0deg); opacity: 0.6; }
+      100%{ transform: translateY(110vh) rotate(720deg); opacity: 0; }
+    }
+    .container {
+      max-width: 1100px; margin: 0 auto; position: relative; z-index: 1;
+    }
+    header {
+      text-align: center; padding: 20px 0 10px;
+    }
+    header h1 {
+      font-size: 2rem; color: #c04080;
+    }
+    header p {
+      font-size: 0.88rem; color: #e07030; margin-top: 4px;
+    }
+    .notice {
+      background: rgba(255,255,255,0.85); border: 2px solid #ffb7d5;
+      border-radius: 12px; padding: 10px 20px; margin: 10px 0 20px;
+      font-size: 0.85rem; color: #888; text-align: center;
+    }
+    .notice span { color: #e07030; font-weight: bold; }
+    nav {
+      display: flex; gap: 12px; justify-content: center; margin-bottom: 24px;
+    }
+    nav a {
+      padding: 10px 28px; background: linear-gradient(135deg, #c04080, #e07030);
+      color: white; border-radius: 24px; text-decoration: none; font-weight: bold;
+      font-size: 0.95rem; box-shadow: 0 3px 10px rgba(192,64,128,0.25);
+      transition: transform 0.1s;
+    }
+    nav a:hover { transform: translateY(-2px); }
+    nav a.secondary {
+      background: linear-gradient(135deg, #e07030, #ff9050);
+    }
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; margin-bottom: 24px;
+    }
+    .stat-card {
+      background: white; border-radius: 16px; padding: 20px 24px;
+      box-shadow: 0 4px 20px rgba(192,64,128,0.12); border: 2px solid #ffb7d5;
+      text-align: center;
+    }
+    .stat-card .val {
+      font-size: 2.4rem; font-weight: bold; color: #e07030;
+    }
+    .stat-card .lbl {
+      font-size: 0.82rem; color: #aaa; margin-top: 4px;
+    }
+    .card {
+      background: white; border-radius: 16px; padding: 20px 24px;
+      box-shadow: 0 4px 20px rgba(192,64,128,0.1); border: 2px solid #ffb7d5;
+      margin-bottom: 24px;
+    }
+    .card h2 {
+      font-size: 1.1rem; color: #c04080; margin-bottom: 14px;
+      border-bottom: 2px solid #ffd6e8; padding-bottom: 8px;
+    }
+    .chart-wrap {
+      position: relative; height: 260px;
+    }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 0.88rem;
+    }
+    th {
+      background: linear-gradient(135deg, #ffe6f0, #ffd6e8);
+      color: #c04080; padding: 8px 12px; text-align: left;
+      font-weight: bold;
+    }
+    td { padding: 8px 12px; border-bottom: 1px solid #ffeef5; color: #555; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,183,213,0.12); }
+    .rank-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 10px;
+      font-weight: bold; font-size: 0.8rem;
+    }
+    .rank-S { background: #fff9e0; color: #c08000; border: 1px solid #e0b000; }
+    .rank-A { background: #e8f5e9; color: #2a8a40; border: 1px solid #2a8a40; }
+    .rank-B { background: #e8f0ff; color: #3050c0; border: 1px solid #3050c0; }
+    .rank-C { background: #f5f5f5; color: #888; border: 1px solid #ccc; }
+    .stage-pill {
+      display: inline-block; padding: 2px 10px; border-radius: 10px;
+      font-weight: bold; font-size: 0.78rem; color: white;
+    }
+    .s1 { background: #5cc060; }
+    .s2 { background: #e07030; }
+    .s3 { background: #c04080; }
+    .cleared-yes { color: #2a8a40; font-weight: bold; }
+    .cleared-no  { color: #e03030; }
+    .loading {
+      text-align: center; padding: 30px; color: #c04080; font-size: 1.1rem;
+    }
+    footer {
+      text-align: center; padding: 24px; color: #c04080; font-size: 0.8rem; opacity: 0.7;
+    }
+    .refresh-btn {
+      float: right; padding: 4px 14px; background: linear-gradient(135deg,#c04080,#e07030);
+      color: white; border: none; border-radius: 14px; font-size: 0.8rem;
+      cursor: pointer; transition: transform 0.1s;
+    }
+    .refresh-btn:hover { transform: translateY(-1px); }
+  </style>
+</head>
+<body>
+
+<script>
+// ペタル演出
+for(let i=0;i<10;i++){
+  const el=document.createElement('div');
+  el.className='petal';
+  const s=Math.random()*12+6;
+  el.style.cssText=`width:${s}px;height:${s}px;left:${Math.random()*100}vw;
+    top:-20px;animation-duration:${Math.random()*8+6}s;
+    animation-delay:-${Math.random()*10}s;opacity:${Math.random()*0.4+0.2}`;
+  document.body.appendChild(el);
+}
+</script>
+
+<div class="container">
+  <header>
+    <h1>🌸 タイピングバスケ ダッシュボード</h1>
+    <p>桜野ひかりと特訓！プレイ統計・ランキング</p>
+  </header>
+
+  <div class="notice" id="dbNotice">
+    <span>※ Supabaseに接続していない場合はサンプルデータが表示されます</span>
+  </div>
+
+  <nav>
+    <a href="typing_basketball.html" class="secondary">🏀 ゲームをプレイ</a>
+    <a href="index.html">🏠 トップページ</a>
+  </nav>
+
+  <!-- サマリー統計 -->
+  <div class="grid" id="summaryGrid">
+    <div class="stat-card"><div class="val" id="statTotalPlays">-</div><div class="lbl">総プレイ数</div></div>
+    <div class="stat-card"><div class="val" id="statCompleted">-</div><div class="lbl">ゲームクリア数</div></div>
+    <div class="stat-card"><div class="val" id="statToday">-</div><div class="lbl">今日のプレイ数</div></div>
+    <div class="stat-card"><div class="val" id="statAvgScore">-</div><div class="lbl">平均スコア</div></div>
+  </div>
+
+  <!-- ステージ別クリア率チャート -->
+  <div class="card">
+    <h2>📊 ステージ別クリア率 <button class="refresh-btn" onclick="loadAll()">🔄 更新</button></h2>
+    <div class="chart-wrap">
+      <canvas id="stageChart"></canvas>
+    </div>
+  </div>
+
+  <!-- ランキング -->
+  <div class="card">
+    <h2>🏆 ランキング TOP 10</h2>
+    <div id="leaderboardWrap"><div class="loading">読み込み中…</div></div>
+  </div>
+
+  <!-- 最近のプレイ -->
+  <div class="card">
+    <h2>🕐 最近のプレイ（直近20件）</h2>
+    <div id="recentWrap"><div class="loading">読み込み中…</div></div>
+  </div>
+
+  <footer>作：株式会社さくらコミュニケーション IT事業本部ソリューションサービス部 I</footer>
+</div>
+
+<script>
+// =====================================================================
+//  SUPABASE 設定（typing_basketball.html と同じキーを設定してください）
+// =====================================================================
+const SUPABASE_URL      = 'https://jkcknhvuhuogfmdiceuj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImprY2tuaHZ1aHVvZ2ZtZGljZXVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxODE5MjMsImV4cCI6MjA5MTc1NzkyM30.Fya2MX64c9zdqPuJFpnHnjZ-wAHxOOIRkfBggRE3Lsk';
+const supabaseClient = (typeof supabase !== 'undefined')
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+const DB_ENABLED = supabaseClient !== null && SUPABASE_URL !== 'https://jkcknhvuhuogfmdiceuj.supabase.co';
+
+// =====================================================================
+//  サンプルデータ（DB未接続時に表示）
+// =====================================================================
+const SAMPLE_SESSIONS = [
+  { player_name:'さくら', stages_cleared:3, total_score:18, total_attempts:22, final_rank:'S', completed_at:'2025-04-15T10:00:00Z' },
+  { player_name:'ひかり', stages_cleared:3, total_score:15, total_attempts:20, final_rank:'A', completed_at:'2025-04-15T09:30:00Z' },
+  { player_name:'たろう', stages_cleared:2, total_score:8,  total_attempts:15, final_rank:'B', completed_at:'2025-04-14T18:00:00Z' },
+  { player_name:'はなこ', stages_cleared:3, total_score:12, total_attempts:18, final_rank:'A', completed_at:'2025-04-14T17:20:00Z' },
+  { player_name:'けんじ', stages_cleared:1, total_score:3,  total_attempts:12, final_rank:'C', completed_at:'2025-04-13T12:00:00Z' },
+];
+const SAMPLE_STAGE_STATS = [
+  { stage_num:1, total_plays:50, cleared_count:38, clear_rate_pct:76, avg_score:12 },
+  { stage_num:2, total_plays:38, cleared_count:22, clear_rate_pct:58, avg_score:6  },
+  { stage_num:3, total_plays:22, cleared_count:10, clear_rate_pct:45, avg_score:9  },
+];
+
+// =====================================================================
+//  Chart.js インスタンス
+// =====================================================================
+let chartInstance = null;
+
+function renderStageChart(stats){
+  const labels  = stats.map(s => `Stage ${s.stage_num}`);
+  const rates   = stats.map(s => s.clear_rate_pct ?? 0);
+  const plays   = stats.map(s => s.total_plays ?? 0);
+  const colors  = ['rgba(92,192,96,0.75)', 'rgba(224,112,48,0.75)', 'rgba(192,64,128,0.75)'];
+  const borders = ['#5cc060', '#e07030', '#c04080'];
+
+  const ctx = document.getElementById('stageChart').getContext('2d');
+  if(chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'クリア率 (%)',
+          data: rates,
+          backgroundColor: colors,
+          borderColor: borders,
+          borderWidth: 2,
+          borderRadius: 6,
+          yAxisID: 'y',
+        },
+        {
+          label: 'プレイ数',
+          data: plays,
+          type: 'line',
+          borderColor: '#c04080',
+          backgroundColor: 'rgba(192,64,128,0.15)',
+          borderWidth: 2,
+          pointRadius: 5,
+          pointBackgroundColor: '#c04080',
+          tension: 0.3,
+          yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        y: {
+          type: 'linear', position: 'left',
+          min: 0, max: 100,
+          title: { display: true, text: 'クリア率 (%)', color: '#c04080' },
+          ticks: { color: '#888' },
+          grid: { color: 'rgba(192,64,128,0.1)' }
+        },
+        y2: {
+          type: 'linear', position: 'right',
+          min: 0,
+          title: { display: true, text: 'プレイ数', color: '#e07030' },
+          ticks: { color: '#888' },
+          grid: { drawOnChartArea: false }
+        }
+      }
+    }
+  });
+}
+
+function renderLeaderboard(sessions){
+  if(!sessions || sessions.length === 0){
+    document.getElementById('leaderboardWrap').innerHTML = '<p style="color:#aaa;padding:16px">データがありません</p>';
+    return;
+  }
+  const rows = sessions.map((s, i) => {
+    const acc = s.total_attempts > 0 ? Math.round(s.total_score / s.total_attempts * 100) : 0;
+    const date = s.completed_at ? new Date(s.completed_at).toLocaleDateString('ja-JP') : '-';
+    const rankClass = `rank-${s.final_rank || 'C'}`;
+    return `<tr>
+      <td style="font-weight:bold;color:#c04080">${i+1}</td>
+      <td><b>${escHtml(s.player_name)}</b></td>
+      <td>${s.stages_cleared} / 3 ステージ</td>
+      <td>${s.total_score}</td>
+      <td>${acc}%</td>
+      <td><span class="rank-badge ${rankClass}">Rank ${s.final_rank || '?'}</span></td>
+      <td style="color:#aaa;font-size:0.8rem">${date}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('leaderboardWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>#</th><th>名前</th><th>クリア数</th><th>スコア</th><th>命中率</th><th>ランク</th><th>日時</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderRecent(sessions){
+  if(!sessions || sessions.length === 0){
+    document.getElementById('recentWrap').innerHTML = '<p style="color:#aaa;padding:16px">データがありません</p>';
+    return;
+  }
+  const rows = sessions.map(s => {
+    const acc = s.total_attempts > 0 ? Math.round(s.total_score / s.total_attempts * 100) : 0;
+    const date = s.started_at ? new Date(s.started_at).toLocaleString('ja-JP') : '-';
+    const done = s.completed_at ? '<span class="cleared-yes">完了</span>' : '<span class="cleared-no">未完了</span>';
+    return `<tr>
+      <td><b>${escHtml(s.player_name)}</b></td>
+      <td>${done}</td>
+      <td>${s.stages_cleared} / 3</td>
+      <td>${s.total_score}</td>
+      <td>${acc}%</td>
+      <td style="color:#aaa;font-size:0.8rem">${date}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('recentWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>名前</th><th>状態</th><th>クリア</th><th>スコア</th><th>命中率</th><th>開始日時</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderSummary(sessions, stageStats){
+  const total  = sessions.length;
+  const compl  = sessions.filter(s => s.completed_at).length;
+  const today  = sessions.filter(s => {
+    if(!s.started_at) return false;
+    const d = new Date(s.started_at);
+    const now = new Date();
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth() && d.getDate()===now.getDate();
+  }).length;
+  const scores = sessions.filter(s => s.total_score > 0).map(s => s.total_score);
+  const avg    = scores.length > 0 ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : 0;
+
+  document.getElementById('statTotalPlays').textContent = total;
+  document.getElementById('statCompleted').textContent  = compl;
+  document.getElementById('statToday').textContent      = today;
+  document.getElementById('statAvgScore').textContent   = avg;
+}
+
+function escHtml(str){
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// =====================================================================
+//  データ読み込み
+// =====================================================================
+async function loadAll(){
+  if(!DB_ENABLED){
+    // サンプルデータを表示
+    document.getElementById('dbNotice').innerHTML =
+      '<span>⚠️ Supabase未接続：サンプルデータを表示しています。実データを表示するには SUPABASE_URL と SUPABASE_ANON_KEY を設定してください。</span>';
+    renderSummary(SAMPLE_SESSIONS, SAMPLE_STAGE_STATS);
+    renderStageChart(SAMPLE_STAGE_STATS);
+    renderLeaderboard(SAMPLE_SESSIONS);
+    renderRecent(SAMPLE_SESSIONS);
+    return;
+  }
+
+  document.getElementById('dbNotice').innerHTML =
+    '<span style="color:#2a8a40">✅ Supabase接続中 — リアルタイムデータを表示しています</span>';
+
+  try{
+    // ゲームセッション（サマリー用）
+    const { data: allSessions } = await supabaseClient
+      .from('game_sessions')
+      .select('player_name, stages_cleared, total_score, total_attempts, final_rank, completed_at, started_at')
+      .order('started_at', { ascending: false })
+      .limit(500);
+
+    // ランキング TOP 10（完了のみ）
+    const { data: ranked } = await supabaseClient
+      .from('game_sessions')
+      .select('player_name, stages_cleared, total_score, total_attempts, final_rank, completed_at')
+      .not('completed_at', 'is', null)
+      .order('stages_cleared', { ascending: false })
+      .order('total_score', { ascending: false })
+      .limit(10);
+
+    // 最近20件
+    const { data: recent } = await supabaseClient
+      .from('game_sessions')
+      .select('player_name, stages_cleared, total_score, total_attempts, final_rank, completed_at, started_at')
+      .order('started_at', { ascending: false })
+      .limit(20);
+
+    // ステージ統計（ビューから取得）
+    const { data: stageStats } = await supabaseClient
+      .from('stage_stats')
+      .select('*')
+      .order('stage_num');
+
+    renderSummary(allSessions || [], stageStats || []);
+    renderStageChart(stageStats && stageStats.length > 0 ? stageStats : SAMPLE_STAGE_STATS);
+    renderLeaderboard(ranked || []);
+    renderRecent(recent || []);
+
+  }catch(err){
+    console.error('Dashboard load error:', err);
+    document.getElementById('dbNotice').innerHTML =
+      `<span style="color:#e03030">❌ データ読み込みエラー: ${err.message}</span>`;
+    // フォールバック：サンプルデータ
+    renderSummary(SAMPLE_SESSIONS, SAMPLE_STAGE_STATS);
+    renderStageChart(SAMPLE_STAGE_STATS);
+    renderLeaderboard(SAMPLE_SESSIONS);
+    renderRecent(SAMPLE_SESSIONS);
+  }
+}
+
+// ページ読み込み時に実行
+window.addEventListener('load', loadAll);
+</script>
+
+</body>
+</html>

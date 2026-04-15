@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>タイピングバスケ - 桜野ひかり</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background:linear-gradient(135deg,#ffe6f0 0%,#ffd6e8 40%,#fff0e6 100%);
+      font-family:'Segoe UI','Hiragino Sans',sans-serif;
+      overflow:hidden; height:100vh; width:100vw; user-select:none;
+    }
+    .petal {
+      position:absolute; background:#ffb7d5; border-radius:50% 0 50% 0;
+      pointer-events:none; animation:fall linear infinite;
+    }
+    @keyframes fall {
+      0%  { transform:translateY(-20px) rotate(0deg); opacity:0.8; }
+      100%{ transform:translateY(110vh) rotate(720deg); opacity:0; }
+    }
+    #gameCanvas { display:block; position:absolute; top:0; left:0; }
+
+    /* Header */
+    #ui {
+      position:absolute; top:0; left:0; right:0; z-index:5; height:50px;
+      display:flex; justify-content:space-between; align-items:center;
+      padding:0 24px; background:rgba(255,255,255,0.65); backdrop-filter:blur(6px);
+      border-bottom:2px solid #ffb7d5;
+    }
+    .ui-title { font-size:1rem; font-weight:bold; color:#c04080; }
+    .ui-stage { font-size:1rem; color:#e07030; font-weight:bold; }
+    .ui-score { font-size:0.88rem; color:#c04080; font-weight:bold; }
+
+    /* Input area */
+    #inputArea {
+      position:absolute; bottom:0; left:0; right:0; z-index:5;
+      background:rgba(255,255,255,0.88); backdrop-filter:blur(8px);
+      border-top:2px solid #ffb7d5;
+      padding:8px 16px 12px;
+      display:flex; flex-direction:column; align-items:center; gap:5px;
+    }
+
+    /* 単語（ひらがな下のガイド用・小さく） */
+    #displayWord { font-size:0.85rem; color:#bbb; letter-spacing:2px; }
+
+    /* ユニット boxes */
+    #unitsArea {
+      display:flex; flex-wrap:wrap; justify-content:center;
+      align-items:flex-end; gap:3px; min-height:70px;
+    }
+    .ub { display:inline-flex; flex-direction:column; align-items:center; gap:1px; transition:transform 0.1s; }
+    .ub-kana { font-size:1.7rem; font-weight:bold; line-height:1.2; padding:2px 4px; border-radius:6px; }
+    .ub-rom  { font-size:0.62rem; font-family:monospace; letter-spacing:0.5px; }
+
+    .ub.done .ub-kana { color:#ccc; text-decoration:line-through; font-size:1.2rem; }
+    .ub.done .ub-rom  { color:#e0e0e0; }
+    .ub.next { transform:translateY(-4px); }
+    .ub.next .ub-kana { color:#e07030; font-size:2rem; background:rgba(224,112,48,0.1); border:2px solid rgba(224,112,48,0.4); }
+    .ub.next .ub-rom  { color:#e07030; font-weight:bold; font-size:0.72rem; }
+    .ub.auto .ub-kana { color:#ddd; font-size:0.95rem; }
+    .ub.auto .ub-rom  { color:#e8e8e8; font-size:0.58rem; }
+    .ub.rest .ub-kana { color:#888; }
+    .ub.rest .ub-rom  { color:#bbb; }
+    .ub.miss .ub-kana { color:#e03030!important; background:rgba(224,48,48,0.12)!important; border:2px solid rgba(224,48,48,0.5)!important; animation:missPulse 0.3s ease; }
+    @keyframes missPulse { 0%{transform:translateX(-4px) translateY(-4px);}50%{transform:translateX(4px) translateY(-4px);}100%{transform:translateX(0) translateY(-4px);} }
+
+    /* ローマ字バッファ + ガイド */
+    #romajiLine { display:flex; align-items:center; gap:14px; min-height:24px; }
+    #romajiBuf {
+      font-family:monospace; font-size:1.1rem; font-weight:bold; color:#e07030;
+      min-width:50px; text-align:center; letter-spacing:2px;
+      background:rgba(224,112,48,0.1); border-radius:6px; padding:2px 10px;
+    }
+    #romajiGuide { font-family:monospace; font-size:0.76rem; color:#bbb; letter-spacing:0.5px; }
+    #romajiGuide .rg-next { color:#e07030; font-weight:bold; }
+
+    /* タイマー */
+    #timerWrap { width:360px; height:7px; background:#f0d0e0; border-radius:4px; overflow:hidden; }
+    #timerFill  { height:100%; border-radius:4px; transition:width 0.1s linear; }
+
+    /* 進捗 */
+    #progressWrap { width:260px; height:5px; background:#f0d0e0; border-radius:3px; overflow:hidden; }
+    #progressFill { height:100%; background:linear-gradient(90deg,#e07030,#ff9050); border-radius:3px; transition:width 0.15s; }
+
+    /* Floating message */
+    #msgOverlay {
+      position:absolute; top:42%; left:50%; transform:translate(-50%,-50%);
+      font-size:2rem; font-weight:bold; pointer-events:none;
+      opacity:0; transition:opacity 0.15s; z-index:6;
+      text-shadow:0 2px 12px rgba(255,255,255,0.95);
+    }
+    #msgOverlay.show { opacity:1; }
+
+    /* Modal screens */
+    .screen {
+      position:absolute; inset:0; z-index:20;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      background:rgba(255,228,240,0.95); backdrop-filter:blur(4px); gap:12px;
+    }
+    .screen h1 { font-size:2rem; color:#c04080; }
+    .hikari-badge {
+      display:flex; align-items:center; gap:12px; background:white;
+      border-radius:40px; padding:10px 20px; box-shadow:0 2px 14px rgba(192,64,128,0.2);
+    }
+    .hikari-face {
+      width:48px; height:48px; border-radius:50%;
+      background:linear-gradient(135deg,#ffcce0,#ffd9a8); border:3px solid #ffb7d5;
+      display:flex; align-items:center; justify-content:center; font-size:1.6rem;
+    }
+    .hikari-name { font-size:0.92rem; color:#c04080; font-weight:bold; }
+    .hikari-sub  { font-size:0.78rem; color:#e07030; }
+    .stage-rules {
+      background:rgba(255,255,255,0.85); border-radius:12px;
+      padding:10px 22px; font-size:0.87rem; color:#555; line-height:1.9;
+    }
+    .prize-box {
+      background:white; border-radius:16px;
+      padding:12px 28px; text-align:center; box-shadow:0 4px 20px rgba(192,64,128,0.15);
+      border:3px solid #ffb7d5;
+    }
+    .prize-box.fail { border-color:#e03030; box-shadow:0 4px 20px rgba(200,0,0,0.12); }
+    .prize-icon  { font-size:2.6rem; }
+    .prize-rank  { font-size:1.4rem; font-weight:bold; color:#c04080; }
+    .prize-rank.fail { color:#e03030; }
+    .prize-title { font-size:1rem; color:#e07030; font-weight:bold; }
+    .prize-desc  { font-size:0.8rem; color:#888; margin-top:3px; }
+    .stat-row { display:flex; gap:14px; }
+    .stat-box {
+      text-align:center; background:#fff5f8; border-radius:10px;
+      padding:7px 14px; border:1px solid #ffb7d5; min-width:76px;
+    }
+    .stat-val { font-size:1.3rem; font-weight:bold; color:#e07030; }
+    .stat-lbl { font-size:0.7rem; color:#aaa; }
+    .btn-row { display:flex; gap:12px; }
+    .btn {
+      padding:11px 32px; font-size:1rem; font-weight:bold; color:white;
+      border:none; border-radius:32px; cursor:pointer;
+      transition:transform 0.1s, box-shadow 0.1s;
+    }
+    .btn.orange {
+      background:linear-gradient(135deg,#e07030,#ff9050);
+      box-shadow:0 4px 12px rgba(224,112,48,0.35);
+    }
+    .btn.red {
+      background:linear-gradient(135deg,#e03030,#ff5050);
+      box-shadow:0 4px 12px rgba(200,0,0,0.25);
+    }
+    .btn:hover  { transform:translateY(-2px); }
+    .btn:active { transform:translateY(0); }
+    .clear-badge {
+      font-size:1rem; font-weight:bold; padding:4px 18px; border-radius:20px;
+    }
+    .clear-badge.pass { background:#e8ffed; color:#2a8a40; border:2px solid #2a8a40; }
+    .clear-badge.fail { background:#ffe8e8; color:#e03030; border:2px solid #e03030; }
+    #ghostInput { position:fixed; top:0; left:0; width:1px; height:1px; opacity:0; pointer-events:none; }
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<input id="ghostInput" type="text" inputmode="none" autocomplete="off" readonly>
+
+<div id="ui">
+  <div class="ui-title">🌸 タイピングバスケ</div>
+  <div class="ui-stage" id="uiStage">Stage 1</div>
+  <div class="ui-score" id="uiScore">スコア: 0 / 0</div>
+</div>
+
+<div id="inputArea">
+  <div id="displayWord"></div>
+  <div id="unitsArea"></div>
+  <div id="romajiLine">
+    <span id="romajiBuf"></span>
+    <span id="romajiGuide"></span>
+  </div>
+  <div id="timerWrap"><div id="timerFill" style="width:100%"></div></div>
+  <div id="progressWrap"><div id="progressFill" style="width:0%"></div></div>
+</div>
+
+<div id="msgOverlay"></div>
+
+<!-- スタート -->
+<div class="screen" id="startScreen">
+  <div class="hikari-badge">
+    <div class="hikari-face">🌸</div>
+    <div>
+      <div class="hikari-name">桜野ひかり（22歳 SE）</div>
+      <div class="hikari-sub">株式会社さくらコミュニケーション</div>
+    </div>
+  </div>
+  <h1>タイピングバスケ</h1>
+  <div class="stage-rules">
+    🏀 <b>Stage 1</b>：1かなで1球 ／ ゴール固定 ／ 15単語 ／ 命中率<b>92%</b>でクリア<br>
+    🏀 <b>Stage 2</b>：2かなで1球 ／ ゴール左右 ／ 15単語 ／ <b>7ゴール</b>でクリア<br>
+    🏀 <b>Stage 3</b>：3かなで1球 ／ ゴール不規則 ／ 20単語 ／ <b>5ゴール</b>でクリア<br>
+    ⌨️ ローマ字入力　例）し→shi　っ→次の子音×2(tt,kk…)　ー→ハイフンキー(-)<br>
+    🎯 ミスすると球は飛ばない！ノーミス単語で<b>ボーナス単語追加</b>！
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+    <label style="font-size:0.88rem;color:#c04080;font-weight:bold">あなたの名前を入力してね 🌸</label>
+    <input id="playerNameInput" type="text" maxlength="16" placeholder="名前（16文字まで）"
+      style="padding:8px 16px;border:2px solid #ffb7d5;border-radius:20px;font-size:1rem;
+             text-align:center;outline:none;font-family:'Meiryo',sans-serif;width:220px">
+  </div>
+  <button class="btn orange" id="startBtn">ゲームスタート！ 🏀</button>
+</div>
+
+<!-- ステージ結果（クリア/失敗共用） -->
+<div class="screen" id="resultScreen" style="display:none;">
+  <div class="hikari-badge">
+    <div class="hikari-face" id="resFace">🏀</div>
+    <div>
+      <div class="hikari-name" id="resName">Stage 1 結果</div>
+      <div class="hikari-sub" id="resHMsg">「頑張ったね！」</div>
+    </div>
+  </div>
+  <h1 id="resTitle">結果発表</h1>
+  <span class="clear-badge" id="resBadge">クリア！</span>
+  <div class="prize-box" id="resPrizeBox">
+    <div class="prize-icon"  id="resIcon">🥇</div>
+    <div class="prize-rank"  id="resRank">Rank S</div>
+    <div class="prize-title" id="resPTitle">タイピングマスター！</div>
+    <div class="prize-desc"  id="resPDesc"></div>
+  </div>
+  <div class="stat-row">
+    <div class="stat-box"><div class="stat-val" id="resSc">0</div><div class="stat-lbl">成功</div></div>
+    <div class="stat-box"><div class="stat-val" id="resAtt">0</div><div class="stat-lbl">シュート数</div></div>
+    <div class="stat-box"><div class="stat-val" id="resAcc">0%</div><div class="stat-lbl" id="resAccLbl">命中率</div></div>
+  </div>
+  <div class="btn-row">
+    <button class="btn red"    id="retryBtn"  style="display:none">もう一度挑戦 🔄</button>
+    <button class="btn orange" id="advanceBtn" style="display:none">次のステージへ 🏀</button>
+    <button class="btn orange" id="finishBtn"  style="display:none">結果を見る 🏆</button>
+  </div>
+</div>
+
+<!-- 全クリア -->
+<div class="screen" id="finalScreen" style="display:none;">
+  <div class="hikari-badge">
+    <div class="hikari-face">🏆</div>
+    <div>
+      <div class="hikari-name">桜野ひかり</div>
+      <div class="hikari-sub" id="finHMsg">「全部クリア！すごい！」</div>
+    </div>
+  </div>
+  <h1>全ステージクリア！🎉</h1>
+  <div class="prize-box">
+    <div class="prize-icon"  id="finIcon">🥇</div>
+    <div class="prize-rank"  id="finRank">総合 Rank S</div>
+    <div class="prize-title" id="finPTitle">タイピングマスター！</div>
+    <div class="prize-desc"  id="finPDesc"></div>
+  </div>
+  <div class="stat-row">
+    <div class="stat-box"><div class="stat-val" id="finSc">0</div><div class="stat-lbl">総成功</div></div>
+    <div class="stat-box"><div class="stat-val" id="finAtt">0</div><div class="stat-lbl">総シュート</div></div>
+    <div class="stat-box"><div class="stat-val" id="finAcc">0%</div><div class="stat-lbl">総命中率</div></div>
+  </div>
+  <div id="leaderboardSection" style="display:none">
+    <h3 style="color:#c04080;font-size:1rem;margin:8px 0 4px">🏆 ランキング TOP 10</h3>
+    <div id="leaderboardList" style="font-size:0.82rem;width:340px;max-height:180px;overflow-y:auto"></div>
+  </div>
+  <button class="btn orange" id="replayBtn">もう一度プレイ 🌸</button>
+</div>
+
+<script>
+// =====================================================================
+//  SUPABASE 設定（あなたのプロジェクトのURLとAnonキーに書き換えてください）
+// =====================================================================
+const SUPABASE_URL      = 'https://jkcknhvuhuogfmdiceuj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImprY2tuaHZ1aHVvZ2ZtZGljZXVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxODE5MjMsImV4cCI6MjA5MTc1NzkyM30.Fya2MX64c9zdqPuJFpnHnjZ-wAHxOOIRkfBggRE3Lsk';
+const supabaseClient = (typeof supabase !== 'undefined')
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+const DB_ENABLED = supabaseClient !== null && SUPABASE_URL !== 'https://jkcknhvuhuogfmdiceuj.supabase.co';
+
+function getPlayerId(){
+  let id = localStorage.getItem('sakura_player_id');
+  if(!id){ id = crypto.randomUUID(); localStorage.setItem('sakura_player_id', id); }
+  return id;
+}
+
+async function initSession(){
+  if(!DB_ENABLED) return;
+  playerId = getPlayerId();
+  try{
+    const { data } = await supabaseClient.from('game_sessions').insert({
+      player_name: playerName,
+      player_id: playerId
+    }).select('id').single();
+    if(data) sessionId = data.id;
+  }catch(err){ console.warn('Supabase initSession error:', err); }
+}
+
+async function saveStageResult(stageIndex, cleared, score, attempts){
+  if(!DB_ENABLED) return;
+  const cfg = STAGE_CFG[stageIndex];
+  const acc = attempts > 0 ? Math.round(score / attempts * 100) : 0;
+  try{
+    await supabaseClient.from('stage_results').insert({
+      session_id:   sessionId || null,
+      player_name:  playerName,
+      player_id:    playerId,
+      stage_num:    stageIndex + 1,
+      cleared,
+      score,
+      attempts,
+      accuracy:     cfg.clearMode === 'accuracy' ? acc : null,
+      goals_scored: cfg.clearMode === 'goals'    ? score : null
+    });
+  }catch(err){ console.warn('Supabase saveStageResult error:', err); }
+}
+
+async function saveGameSession(stagesCleared, finalRank){
+  if(!DB_ENABLED || !sessionId) return;
+  try{
+    await supabaseClient.from('game_sessions').update({
+      completed_at:   new Date().toISOString(),
+      stages_cleared: stagesCleared,
+      final_rank:     finalRank,
+      total_score:    totalSc,
+      total_attempts: totalAtt
+    }).eq('id', sessionId);
+  }catch(err){ console.warn('Supabase saveGameSession error:', err); }
+}
+
+async function loadLeaderboard(){
+  if(!DB_ENABLED) return;
+  try{
+    const { data } = await supabaseClient.from('game_sessions')
+      .select('player_name, stages_cleared, total_score, total_attempts, completed_at')
+      .not('completed_at', 'is', null)
+      .order('stages_cleared', { ascending: false })
+      .order('total_score', { ascending: false })
+      .limit(10);
+    if(!data || data.length === 0) return;
+    const list = document.getElementById('leaderboardList');
+    const rows = data.map((r, i) => {
+      const acc = r.total_attempts > 0
+        ? Math.round(r.total_score / r.total_attempts * 100) : 0;
+      const date = r.completed_at ? new Date(r.completed_at).toLocaleDateString('ja-JP') : '';
+      return `<div style="display:flex;justify-content:space-between;padding:3px 6px;
+        background:${i%2===0?'rgba(255,183,213,0.15)':'transparent'};border-radius:4px">
+        <span>${i+1}. <b>${r.player_name}</b></span>
+        <span>${r.stages_cleared}ステージ / ${r.total_score}ゴール / ${acc}%</span>
+        <span style="color:#aaa">${date}</span>
+      </div>`;
+    }).join('');
+    list.innerHTML = rows;
+    document.getElementById('leaderboardSection').style.display = 'block';
+  }catch(err){ console.warn('Supabase loadLeaderboard error:', err); }
+}
+
+// =====================================================================
+//  ROMAJI → HIRAGANA テーブル
+// =====================================================================
+const RT = {};
+[
+  'sha,しゃ','shi,し','shu,しゅ','sho,しょ','she,しぇ',
+  'chi,ち','cha,ちゃ','chu,ちゅ','cho,ちょ','che,ちぇ','je,じぇ',
+  'tsu,つ','thi,てぃ','dhi,でぃ',
+  'kya,きゃ','kyu,きゅ','kyo,きょ',
+  'nya,にゃ','nyu,にゅ','nyo,にょ',
+  'hya,ひゃ','hyu,ひゅ','hyo,ひょ',
+  'mya,みゃ','myu,みゅ','myo,みょ',
+  'rya,りゃ','ryu,りゅ','ryo,りょ',
+  'gya,ぎゃ','gyu,ぎゅ','gyo,ぎょ',
+  'bya,びゃ','byu,びゅ','byo,びょ',
+  'pya,ぴゃ','pyu,ぴゅ','pyo,ぴょ',
+  'zya,じゃ','zyu,じゅ','zyo,じょ',
+  'ka,か','ki,き','ku,く','ke,け','ko,こ',
+  'sa,さ','si,し','su,す','se,せ','so,そ',
+  'ta,た','ti,ち','tu,つ','te,て','to,と',
+  'na,な','ni,に','nu,ぬ','ne,ね','no,の',
+  'ha,は','hi,ひ','fu,ふ','hu,ふ','he,へ','ho,ほ',
+  'ma,ま','mi,み','mu,む','me,め','mo,も',
+  'ya,や','yu,ゆ','yo,よ',
+  'ra,ら','ri,り','ru,る','re,れ','ro,ろ',
+  'wa,わ','wo,を',
+  'ga,が','gi,ぎ','gu,ぐ','ge,げ','go,ご',
+  'za,ざ','zi,じ','ji,じ','zu,ず','ze,ぜ','zo,ぞ',
+  'da,だ','di,ぢ','du,づ','de,で','do,ど',
+  'ba,ば','bi,び','bu,ぶ','be,べ','bo,ぼ',
+  'pa,ぱ','pi,ぴ','pu,ぷ','pe,ぺ','po,ぽ',
+  'ja,じゃ','ju,じゅ','jo,じょ',
+  'fa,ふぁ','fi,ふぃ','fe,ふぇ','fo,ふぉ',
+  'we,うぇ','wi,うぃ',
+  'a,あ','i,い','u,う','e,え','o,お',
+].forEach(s=>{const[k,v]=s.split(',');RT[k]=v;});
+
+const RTP=new Set();
+for(const k of Object.keys(RT)) for(let i=1;i<k.length;i++) RTP.add(k.slice(0,i));
+
+const HINT={};
+for(const[rom,kana] of Object.entries(RT))
+  if(!HINT[kana]||rom.length<HINT[kana].length) HINT[kana]=rom;
+HINT['っ']='(子音×2)'; HINT['ん']='nn'; HINT['ー']='-';
+
+// =====================================================================
+//  小書き仮名 / splitReading / displayUnit
+// =====================================================================
+const SMALL_KANA=new Set('ぁぃぅぇぉゃゅょゎ');
+
+function splitReading(r){
+  const units=[],chars=[...r];
+  for(let i=0;i<chars.length;i++){
+    if(i+1<chars.length && SMALL_KANA.has(chars[i+1])){ units.push(chars[i]+chars[i+1]); i++; }
+    else units.push(chars[i]);
+  }
+  return units;
+}
+
+function effLen(units){ return units.length; }
+
+// ★ 表示用 unit の文字：ひらがな単語はそのまま、それ以外はカタカナに変換
+function displayUnit(word, unit){
+  const isAllHira=/^[\u3041-\u3096\u30FC]+$/.test(word.d);
+  if(isAllHira) return unit; // さくら、ひかりなどはひらがなのまま
+  // カタカナ変換（ひらがな→カタカナ、ー・小書きもそのまま対応）
+  return unit.replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+0x60));
+}
+
+function hintOf(i,units){
+  const u=units[i];
+  if(u==='ー') return '-';
+  if(u==='っ'){
+    for(let j=i+1;j<units.length;j++){
+      if(units[j]!=='ー'){
+        const nr=HINT[units[j]]||'';
+        if(nr&&!'aiueo'.includes(nr[0])) return nr[0]+nr[0];
+        break;
+      }
+    }
+    return 'ltu';
+  }
+  if(u==='ん') return 'nn';
+  return HINT[u]||u;
+}
+
+// =====================================================================
+//  STAGE / WORD 定義
+//  wordsPerStage: Stage1=15, Stage2=10, Stage3=5
+//  clearThreshold: 命中率50%以上でクリア
+// =====================================================================
+const STAGE_CFG=[
+  {
+    id:1, label:'Stage 1', charsPerShot:1, goalMoving:false,
+    secPerChar:2.0, wordsPerStage:15, clearMode:'accuracy', clearValue:92,
+    pool:[
+      {d:'さくら',    r:'さくら'},
+      {d:'ひかり',    r:'ひかり'},
+      {d:'バグ',      r:'ばぐ'},
+      {d:'テスト',    r:'てすと'},
+      {d:'ネット',    r:'ねっと'},
+      {d:'ログ',      r:'ろぐ'},
+      {d:'メモ',      r:'めも'},
+      {d:'ミス',      r:'みす'},
+      {d:'マウス',    r:'まうす'},
+      {d:'タブ',      r:'たぶ'},
+      {d:'パス',      r:'ぱす'},
+      {d:'アプリ',    r:'あぷり'},
+      {d:'コピー',    r:'こぴー'},
+      {d:'クリック',  r:'くりっく'},
+      {d:'コマンド',  r:'こまんど'},
+      {d:'サーバー',  r:'さーばー'},
+      {d:'ファイル',  r:'ふぁいる'},
+      {d:'ウイルス',  r:'ういるす'},
+      {d:'キャッシュ',r:'きゃっしゅ'},
+      {d:'ドメイン',  r:'どめいん'},
+    ]
+  },
+  {
+    id:2, label:'Stage 2', charsPerShot:2, goalMoving:'horizontal',
+    secPerChar:1.8, wordsPerStage:15, clearMode:'goals', clearValue:7, rankSGoals:10,
+    pool:[
+      {d:'プログラム',      r:'ぷろぐらむ'},
+      {d:'アルゴリズム',    r:'あるごりずむ'},
+      {d:'エンジニア',      r:'えんじにあ'},
+      {d:'システム',        r:'しすてむ'},
+      {d:'クライアント',    r:'くらいあんと'},
+      {d:'インプット',      r:'いんぷっと'},
+      {d:'バックアップ',    r:'ばっくあっぷ'},
+      {d:'アジャイル',      r:'あじゃいる'},
+      {d:'ブラウザ',        r:'ぶらうざ'},
+      {d:'コンパイル',      r:'こんぱいる'},
+      {d:'デプロイ',        r:'でぷろい'},
+      {d:'スクラム',        r:'すくらむ'},
+      {d:'クラウド',        r:'くらうど'},
+      {d:'デバッグ',        r:'でばっぐ'},
+      {d:'フレームワーク',  r:'ふれーむわーく'},
+      {d:'リポジトリ',      r:'りぽじとり'},
+      {d:'コンテナ',        r:'こんてな'},
+      {d:'インターフェース',r:'いんたーふぇーす'},
+      {d:'マイグレーション',r:'まいぐれーしょん'},
+      {d:'ステージング',    r:'すてーじんぐ'},
+    ]
+  },
+  {
+    id:3, label:'Stage 3', charsPerShot:3, goalMoving:'lissajous',
+    secPerChar:1.6, wordsPerStage:20, clearMode:'goals', clearValue:5,
+    pool:[
+      {d:'さくらコミュニケーション', r:'さくらこみゅにけーしょん'},
+      {d:'ソフトウェアエンジニア',   r:'そふとうぇあえんじにあ'},
+      {d:'クラウドコンピューティング',r:'くらうどこんぴゅーてぃんぐ'},
+      {d:'バージョン管理システム',   r:'ばーじょんかんりしすてむ'},
+      {d:'オブジェクト指向開発',     r:'おぶじぇくとしこうかいはつ'},
+      {d:'アジャイル開発手法',       r:'あじゃいるかいはつしゅほう'},
+      {d:'データベース設計',         r:'でーたべーすせっけい'},
+      {d:'継続的インテグレーション', r:'けいぞくてきいんてぐれーしょん'},
+      {d:'マイクロサービス',         r:'まいくろさーびす'},
+      {d:'コンテナ仮想化技術',       r:'こんてなかそうかぎじゅつ'},
+      {d:'ネットワークセキュリティ', r:'ねっとわーくせきゅりてぃ'},
+      {d:'リファクタリング',         r:'りふぁくたりんぐ'},
+      {d:'ドメイン駆動設計',         r:'どめいんくどうせっけい'},
+      {d:'インフラストラクチャー',   r:'いんふらすとらくちゃー'},
+      {d:'ビルドパイプライン',       r:'びるどぱいぷらいん'},
+      {d:'テスト駆動開発',           r:'てすとくどうかいはつ'},
+      {d:'サービスメッシュ',         r:'さーびすめっしゅ'},
+      {d:'オーケストレーション',     r:'おーけすとれーしょん'},
+      {d:'ロードバランシング',       r:'ろーどばらんしんぐ'},
+      {d:'エンドポイント設計',       r:'えんどぽいんとせっけい'},
+      {d:'APIゲートウェイ',         r:'えーぴーあいげーとうぇい'},
+      {d:'デザインパターン',         r:'でざいんぱたーん'},
+      {d:'スケーラビリティ',         r:'すけーらびりてぃ'},
+      {d:'モノリシックアーキテクチャ', r:'ものりしっくあーきてくちゃ'},
+      {d:'ペアプログラミング',        r:'ぺあぷろぐらみんぐ'},
+    ]
+  }
+];
+
+function getPrize(acc){
+  if(acc>=95) return{rank:'S',icon:'🥇',title:'タイピングマスター！',  desc:'業務効率MAX！即戦力社員認定！'};
+  if(acc>=80) return{rank:'A',icon:'🥈',title:'グッドシュート！',       desc:'立派なSEとして活躍できます！'};
+  if(acc>=60) return{rank:'B',icon:'🥉',title:'ナイスチャレンジ！',     desc:'あともう少しで一人前のSEです！'};
+  return             {rank:'C',icon:'😓',title:'もう少し練習しよう！',   desc:'ひかりと一緒に特訓しよう！💪'};
+}
+function getHMsg(acc,cleared){
+  if(!cleared) return '「もう一度頑張ろう！💪」';
+  if(acc>=95) return '「完璧！さすがです！✨」';
+  if(acc>=80) return '「すごい！よく頑張りました！」';
+  if(acc>=60) return '「いい調子！もう少し頑張ろう！」';
+  return             '「クリアおめでとう！練習続けよう！」';
+}
+
+// =====================================================================
+//  CANVAS
+// =====================================================================
+const canvas=document.getElementById('gameCanvas');
+const ctx=canvas.getContext('2d');
+function resizeCanvas(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+resizeCanvas(); window.addEventListener('resize',resizeCanvas);
+
+// =====================================================================
+//  STATE
+// =====================================================================
+const GRAVITY=0.2;
+let playerName='', playerId='', sessionId='';
+let stageIdx=0, stageWords=[];
+let wordIdx=0, typedCount=0;
+let stageSc=0, stageAtt=0, totalSc=0, totalAtt=0;
+let balls=[], particles=[];
+let goalX=0, goalY=0, lissT=0;
+let running=false, animId;
+let rBuf='';
+let missedUnit=false, wordHadMiss=false, cleanCount=0;
+let stagePoolRemaining=[];
+let wordTimeLimit=0, wordTimeLeft=0, lastTick=0, lastGameTime=0;
+
+// =====================================================================
+//  KEYDOWN（IMEバイパス）
+// =====================================================================
+document.addEventListener('keydown',(e)=>{
+  if(!running) return;
+  if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); pushRomaji(e.key.toLowerCase()); }
+  if(e.key==='-'){ e.preventDefault(); onKana('ー'); }
+},true);
+
+function pushRomaji(key){
+  rBuf+=key;
+  let changed=true;
+  while(changed&&rBuf.length>0){
+    changed=false;
+    if(rBuf.slice(0,2)==='nn'){ onKana('ん'); rBuf=rBuf.slice(2); changed=true; continue; }
+    if(rBuf[0]==='n'&&rBuf.length>=2&&!'aiueon'.includes(rBuf[1])){
+      onKana('ん'); rBuf=rBuf.slice(1); changed=true; continue;
+    }
+    if(rBuf.length>=2&&rBuf[0]===rBuf[1]&&!'aiueon'.includes(rBuf[0])&&rBuf[0]!=='n'){
+      onKana('っ'); rBuf=rBuf.slice(1); changed=true; continue;
+    }
+    let hit=false;
+    for(let len=Math.min(3,rBuf.length);len>=1;len--){
+      const seq=rBuf.slice(0,len);
+      if(RT[seq]&&!RTP.has(seq)){ onKana(RT[seq]); rBuf=rBuf.slice(len); changed=true; hit=true; break; }
+    }
+    if(!hit) break;
+  }
+  // バッファが有効なプレフィックスでなければ即クリア
+  if(rBuf.length > 0) {
+    let valid = false;
+    for(let len=1; len<=rBuf.length; len++){
+      if(RTP.has(rBuf.slice(0,len)) || RT[rBuf.slice(0,len)]){ valid=true; break; }
+    }
+    if(!valid) rBuf = '';
+  }
+  updateDisplay();
+}
+
+// =====================================================================
+//  KANA 判定（ユニット単位で比較）
+//  ミスしたらボールは飛ばない。ノーミス単語でボーナス。
+// =====================================================================
+function onKana(kana){
+  const word=stageWords[wordIdx];
+  if(!word) return;
+  const units=word.units;
+  if(typedCount>=units.length) return;
+
+  if(kana===units[typedCount]){
+    const cfg=STAGE_CFG[stageIdx];
+    const wasClean=!missedUnit;   // このユニットをミスなしで打てたか
+    if(wasClean) cleanCount++;
+    missedUnit=false;
+
+    typedCount++;
+
+    const nonNow  =typedCount;
+    const nonTotal=units.length;
+
+    if(nonNow>=nonTotal){
+      // 単語完了：バッチちょうど or 余り分の球を飛ばす
+      if(wasClean && cleanCount%cfg.charsPerShot===0) shootBall(kana.slice(-1));
+      else if(cleanCount>0 && cleanCount%cfg.charsPerShot!==0) shootBall(kana.slice(-1));
+      onWordComplete(); return;
+    } else {
+      // 途中：バッチ完了時だけ球を飛ばす
+      if(wasClean && cleanCount%cfg.charsPerShot===0) shootBall(kana.slice(-1));
+    }
+  } else {
+    // ミス：このユニットの球を失い、ミスフラグを立てる
+    missedUnit=true; wordHadMiss=true;
+    rBuf='';
+    showMsg('ミス！','#e03030');
+  }
+  updateDisplay();
+}
+
+function onWordComplete(){
+  const cfg=STAGE_CFG[stageIdx];
+  const wasWordPerfect=!wordHadMiss;
+  let bonusAdded=false;
+
+  // ノーミス単語ボーナス（Stage2/3のみ）：プールから1単語追加
+  if(wasWordPerfect && cfg.clearMode==='goals' && stagePoolRemaining.length>0){
+    stageWords.push(stagePoolRemaining.shift());
+    bonusAdded=true;
+  }
+
+  wordIdx++; typedCount=0; rBuf=''; missedUnit=false; wordHadMiss=false; cleanCount=0;
+
+  if(wordIdx>=stageWords.length){
+    running=false;
+    setTimeout(showResult,700);
+  } else {
+    if(wasWordPerfect && cfg.clearMode==='goals'){
+      showMsg(bonusAdded?'パーフェクト！ボーナス単語 🌟':'パーフェクト！ 🌟','#9030c0');
+    } else {
+      showMsg('ナイス！🌸','#c04080');
+    }
+    startWordTimer(); updateDisplay(); updateUI();
+  }
+}
+
+// =====================================================================
+//  DISPLAY  ─ ユニットboxにカタカナ/ひらがな表示
+// =====================================================================
+function updateDisplay(){
+  const word=stageWords[wordIdx];
+  if(!word){
+    document.getElementById('displayWord').textContent='';
+    document.getElementById('unitsArea').innerHTML='';
+    document.getElementById('romajiGuide').innerHTML='';
+    return;
+  }
+  // 小さく元の単語表示（下のboxとの対応が分かるように）
+  document.getElementById('displayWord').textContent=word.d;
+
+  const units=word.units;
+  let uhtml='';
+  for(let i=0;i<units.length;i++){
+    const u=units[i];
+    let cls= i<typedCount?'done': i===typedCount?(missedUnit?'next miss':'next'):'rest';
+    // ★ 表示文字はカタカナ（またはひらがな）に変換
+    const disp=displayUnit(word,u);
+    const hint=hintOf(i,units);
+    uhtml+=`<div class="ub ${cls}"><div class="ub-kana">${disp}</div><div class="ub-rom">${hint}</div></div>`;
+  }
+  document.getElementById('unitsArea').innerHTML=uhtml;
+
+  // ローマ字ガイド行（残り分）
+  let rgHtml='';
+  for(let i=0;i<units.length;i++){
+    const h=hintOf(i,units);
+    if(i<typedCount)        rgHtml+=`<span style="color:#ddd">${h}·</span>`;
+    else if(i===typedCount) rgHtml+=`<span class="rg-next">${h}·</span>`;
+    else                    rgHtml+=`<span style="color:#ccc">${h}·</span>`;
+  }
+  document.getElementById('romajiGuide').innerHTML=rgHtml;
+  document.getElementById('romajiBuf').textContent=rBuf||'';
+
+  // 進捗
+  const cfg=STAGE_CFG[stageIdx];
+  const wLen=effLen(word.units)||1;
+  const eff=typedCount;
+  const pct=Math.min(100,Math.round((wordIdx/cfg.wordsPerStage+eff/wLen/cfg.wordsPerStage)*100));
+  document.getElementById('progressFill').style.width=pct+'%';
+}
+
+function updateUI(){
+  const cfg=STAGE_CFG[stageIdx];
+  document.getElementById('uiStage').textContent=cfg.label;
+  if(cfg.clearMode==='goals'){
+    document.getElementById('uiScore').textContent=`ゴール: ${stageSc} / ${cfg.clearValue} 🏀`;
+  } else {
+    const acc=stageAtt>0?Math.round(stageSc/stageAtt*100):null;
+    document.getElementById('uiScore').textContent=
+      `スコア: ${stageSc}/${stageAtt}${acc!==null?` (${acc}%)` :''}`;
+  }
+}
+
+// =====================================================================
+//  TIMER
+// =====================================================================
+function startWordTimer(){
+  const cfg=STAGE_CFG[stageIdx];
+  const word=stageWords[wordIdx];
+  if(!word) return;
+  wordTimeLimit=Math.max(8,effLen(word.units)*cfg.secPerChar)*1000;
+  wordTimeLeft=wordTimeLimit; lastTick=performance.now();
+}
+
+function tickTimer(){
+  if(!running||wordIdx>=stageWords.length) return;
+  const now=performance.now();
+  wordTimeLeft-=(now-lastTick); lastTick=now;
+  const pct=Math.max(0,wordTimeLeft/wordTimeLimit*100);
+  const fill=document.getElementById('timerFill');
+  fill.style.width=pct+'%';
+  fill.style.background=pct>60?'#5cc060':pct>30?'#e07030':'#e03030';
+  if(wordTimeLeft<=0){
+    showMsg('タイムアップ！⏰','#cc4488');
+    rBuf=''; typedCount=0; missedUnit=false; wordHadMiss=false; cleanCount=0; wordIdx++;
+    if(wordIdx>=stageWords.length){ running=false; setTimeout(showResult,700); }
+    else{ startWordTimer(); updateDisplay(); updateUI(); }
+  }
+}
+
+// =====================================================================
+//  GOAL
+// =====================================================================
+function initGoal(){ goalX=canvas.width/2; goalY=115; lissT=0; }
+
+function moveGoal(dt){
+  const m=STAGE_CFG[stageIdx].goalMoving;
+  if(m==='horizontal'){
+    lissT+=dt;
+    goalX=canvas.width/2+(canvas.width*0.38)*Math.sin(lissT*0.9); goalY=115;
+  } else if(m==='lissajous'){
+    lissT+=dt;
+    goalX=canvas.width/2+(canvas.width*0.36)*Math.sin(lissT*1.1);
+    goalY=130+90*Math.sin(lissT*1.7+1.2);
+  }
+  goalX=Math.max(60,Math.min(canvas.width-60,goalX));
+  goalY=Math.max(80,Math.min(canvas.height*0.42,goalY));
+}
+
+// =====================================================================
+//  SHOOT
+// =====================================================================
+function shootBall(ch){
+  const sx=canvas.width/2, sy=canvas.height-165;
+  const dx=goalX-sx, dy=goalY-sy;
+  const frames=Math.max(50,Math.hypot(dx,dy)/9);
+  balls.push({x:sx,y:sy,vx:dx/frames,vy:(dy-0.5*GRAVITY*frames*frames)/frames,char:ch,r:20,scored:false});
+  stageAtt++; totalAtt++; updateUI();
+}
+
+function spawnParticles(x,y){
+  const cols=['#e07030','#ff9050','#ffb7d5','#c04080','#ffd700'];
+  for(let i=0;i<22;i++){
+    const a=(Math.PI*2/22)*i+Math.random()*0.3, s=Math.random()*5+2;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,r:Math.random()*5+2,color:cols[Math.floor(Math.random()*cols.length)],life:1.0});
+  }
+}
+
+// =====================================================================
+//  DRAW
+// =====================================================================
+function drawGoal(){
+  const rW=46,nH=52; ctx.save();
+  ctx.fillStyle='rgba(255,255,255,0.88)'; ctx.strokeStyle='#cc4488'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.roundRect(goalX-60,goalY-62,120,48,6); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle='#ff80b0'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.roundRect(goalX-22,goalY-52,44,30,3); ctx.stroke();
+  ctx.strokeStyle='#e06020'; ctx.lineWidth=6; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(goalX-rW,goalY); ctx.lineTo(goalX+rW,goalY); ctx.stroke();
+  ctx.strokeStyle='rgba(140,140,140,0.7)'; ctx.lineWidth=1.5;
+  for(let i=0;i<=8;i++){
+    const t=i/8,nx=goalX-rW+rW*2*t;
+    ctx.beginPath(); ctx.moveTo(nx,goalY); ctx.lineTo(goalX+(nx-goalX)*0.5,goalY+nH); ctx.stroke();
+  }
+  for(let j=0;j<=4;j++){
+    const t=j/4,ny=goalY+nH*t,w=rW*(1-t*0.5);
+    ctx.beginPath(); ctx.moveTo(goalX-w,ny); ctx.lineTo(goalX+w,ny); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawBall(b){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.13)'; ctx.beginPath(); ctx.ellipse(b.x+4,b.y+5,b.r,b.r*0.55,0,0,Math.PI*2); ctx.fill();
+  const g=ctx.createRadialGradient(b.x-5,b.y-5,2,b.x,b.y,b.r);
+  g.addColorStop(0,'#ffaa60'); g.addColorStop(1,'#c05010');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,0.28)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(b.x-b.r,b.y); ctx.lineTo(b.x+b.r,b.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(b.x-b.r*0.5,b.y-b.r*0.85);
+  ctx.bezierCurveTo(b.x+b.r*0.3,b.y-b.r*0.3,b.x+b.r*0.3,b.y+b.r*0.3,b.x-b.r*0.5,b.y+b.r*0.85); ctx.stroke();
+  ctx.fillStyle='white'; ctx.font=`bold ${b.r}px sans-serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(b.char,b.x,b.y);
+  ctx.restore();
+}
+
+function drawHikari(){
+  const cx=canvas.width/2, cy=canvas.height-100; ctx.save();
+  ctx.fillStyle='#ff90c0'; ctx.beginPath(); ctx.ellipse(cx,cy+32,27,36,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#ffe0cc';
+  ctx.beginPath(); ctx.ellipse(cx-33,cy+20,10,18,-0.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+33,cy+20,10,18, 0.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#2a1808';
+  ctx.beginPath(); ctx.ellipse(cx,cy-14,24,20,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx-22,cy+2,7,16,-0.4,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+22,cy+2,7,16, 0.4,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#ffe0cc'; ctx.beginPath(); ctx.ellipse(cx,cy,19,22,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#2a1808';
+  ctx.beginPath(); ctx.ellipse(cx-6,cy-3,3.5,4.5,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+6,cy-3,3.5,4.5,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='white';
+  ctx.beginPath(); ctx.arc(cx-5,cy-4,1.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+7,cy-4,1.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(255,140,140,0.32)';
+  ctx.beginPath(); ctx.ellipse(cx-12,cy+4,7,4,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+12,cy+4,7,4,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#c06060'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(cx,cy+6,6,0.1,Math.PI-0.1); ctx.stroke();
+  ctx.fillStyle='#ff70a0';
+  for(let i=0;i<5;i++){
+    const a=(i/5)*Math.PI*2;
+    ctx.beginPath(); ctx.ellipse(cx+17+Math.cos(a)*4,cy-21+Math.sin(a)*4,3.5,2,a,0,Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle='#ffe0cc'; ctx.beginPath(); ctx.arc(cx+17,cy-21,2,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#c04080'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('ひかり',cx,cy+78); ctx.restore();
+}
+
+// =====================================================================
+//  MESSAGE
+// =====================================================================
+let msgTimer;
+function showMsg(t,c){
+  const el=document.getElementById('msgOverlay');
+  el.textContent=t; el.style.color=c; el.classList.add('show');
+  clearTimeout(msgTimer); msgTimer=setTimeout(()=>el.classList.remove('show'),900);
+}
+
+// =====================================================================
+//  RESULT（クリア / 失敗 共用）
+// =====================================================================
+function showResult(){
+  const cfg=STAGE_CFG[stageIdx];
+  const acc=stageAtt>0?Math.round(stageSc/stageAtt*100):0;
+  // ★ クリア判定：Stage1=命中率80%以上、Stage2/3=ゴール数
+  const cleared=cfg.clearMode==='goals' ? stageSc>=cfg.clearValue : acc>=cfg.clearValue;
+  let p;
+  if(cfg.rankSGoals && stageSc >= cfg.rankSGoals){
+    p = {rank:'S', icon:'🥇', title:'シュートマスター！', desc:'神業シューター！完璧な命中精度です！'};
+  } else if(cfg.clearMode==='goals'){
+    const goalAcc = Math.round(stageSc / (stageAtt||1) * 100);
+    p = getPrize(goalAcc);
+  } else {
+    p = getPrize(acc);
+  }
+  const isLast=stageIdx>=STAGE_CFG.length-1;
+
+  // totalSc / totalAtt はゲームループ中にリアルタイム加算済みなので
+  // 失敗時はそのステージ分を差し引く
+  if(!cleared){ totalSc-=stageSc; totalAtt-=stageAtt; }
+
+  document.getElementById('resName').textContent=`${cfg.label} ${cleared?'クリア！':'失敗…'}`;
+  document.getElementById('resHMsg').textContent=getHMsg(acc,cleared);
+  document.getElementById('resTitle').textContent=cleared?`${cfg.label} クリア！🌸`:`${cfg.label} 失敗…💦`;
+
+  const badge=document.getElementById('resBadge');
+  badge.textContent=cleared?'クリア ✅':'クリア失敗 ❌';
+  badge.className='clear-badge '+(cleared?'pass':'fail');
+
+  const box=document.getElementById('resPrizeBox');
+  box.className='prize-box'+(cleared?'':' fail');
+  document.getElementById('resIcon').textContent=cleared?p.icon:'❌';
+  const rankEl=document.getElementById('resRank');
+  rankEl.textContent=`Rank ${p.rank}`;
+  rankEl.className='prize-rank'+(cleared?'':' fail');
+  document.getElementById('resPTitle').textContent=cleared?p.title:'クリアできませんでした';
+
+  // 失敗時のメッセージをステージ種別で分ける
+  let failDesc;
+  if(cfg.clearMode==='goals'){
+    const need=cfg.clearValue-stageSc;
+    failDesc=`${stageSc}ゴール（クリアまであと${need>0?need:0}ゴール）`;
+  } else {
+    failDesc=`命中率${acc}%でした（${cfg.clearValue}%以上でクリア）`;
+  }
+  document.getElementById('resPDesc').textContent=cleared?p.desc:failDesc;
+
+  document.getElementById('resSc').textContent=stageSc;
+  document.getElementById('resAtt').textContent=stageAtt;
+  // Stage2/3はゴール数/目標を表示、Stage1は命中率
+  const isGoalsMode=cfg.clearMode==='goals';
+  document.getElementById('resAccLbl').textContent=isGoalsMode?'ゴール':'命中率';
+  document.getElementById('resAcc').textContent=
+    isGoalsMode?`${stageSc}/${cfg.clearValue}🏀`:acc+'%';
+
+  // ボタン制御
+  document.getElementById('retryBtn').style.display =cleared?'none':'inline-block';
+  document.getElementById('advanceBtn').style.display=(!cleared||isLast)?'none':'inline-block';
+  document.getElementById('finishBtn').style.display =(cleared&&isLast)?'inline-block':'none';
+
+  document.getElementById('resultScreen').style.display='flex';
+
+  // Supabase: ステージ結果を保存
+  saveStageResult(stageIdx, cleared, stageSc, stageAtt);
+}
+
+document.getElementById('retryBtn').addEventListener('click',()=>{
+  document.getElementById('resultScreen').style.display='none';
+  startStage(); // 同じステージを再挑戦
+});
+
+document.getElementById('advanceBtn').addEventListener('click',()=>{
+  document.getElementById('resultScreen').style.display='none';
+  stageIdx++; startStage();
+});
+
+document.getElementById('finishBtn').addEventListener('click',()=>{
+  document.getElementById('resultScreen').style.display='none';
+  showFinalClear();
+});
+
+// =====================================================================
+//  FINAL
+// =====================================================================
+function showFinalClear(){
+  const acc=totalAtt>0?Math.round(totalSc/totalAtt*100):0;
+  const p=getPrize(acc);
+  document.getElementById('finHMsg').textContent=getHMsg(acc,true);
+  document.getElementById('finIcon').textContent=p.icon;
+  document.getElementById('finRank').textContent=`総合 Rank ${p.rank}`;
+  document.getElementById('finPTitle').textContent=p.title;
+  document.getElementById('finPDesc').textContent=p.desc;
+  document.getElementById('finSc').textContent=totalSc;
+  document.getElementById('finAtt').textContent=totalAtt;
+  document.getElementById('finAcc').textContent=acc+'%';
+  document.getElementById('finalScreen').style.display='flex';
+
+  // Supabase: ゲームセッション完了を保存、リーダーボード表示
+  saveGameSession(STAGE_CFG.length, p.rank);
+  loadLeaderboard();
+}
+
+document.getElementById('replayBtn').addEventListener('click', async ()=>{
+  document.getElementById('finalScreen').style.display='none';
+  document.getElementById('leaderboardSection').style.display='none';
+  document.getElementById('leaderboardList').innerHTML='';
+  sessionId='';
+  await initSession();
+  stageIdx=0; totalSc=0; totalAtt=0; startStage();
+});
+
+// =====================================================================
+//  START
+// =====================================================================
+document.getElementById('startBtn').addEventListener('click', async ()=>{
+  const nameInput = document.getElementById('playerNameInput');
+  playerName = (nameInput.value||'').trim() || '名無しさん';
+  document.getElementById('startScreen').style.display='none';
+  await initSession();
+  stageIdx=0; totalSc=0; totalAtt=0;
+  startStage();
+});
+
+function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+
+function startStage(){
+  const cfg=STAGE_CFG[stageIdx];
+  const allWords=[...cfg.pool];
+  const shuffled=shuffle(shuffle(allWords));
+  stageWords=shuffled.slice(0,cfg.wordsPerStage).map(w=>({...w,units:splitReading(w.r)}));
+  stagePoolRemaining=shuffled.slice(cfg.wordsPerStage).map(w=>({...w,units:splitReading(w.r)}));
+  wordIdx=0; typedCount=0; rBuf=''; missedUnit=false; wordHadMiss=false; cleanCount=0;
+  stageSc=0; stageAtt=0;
+  balls=[]; particles=[];
+  initGoal(); startWordTimer();
+  updateDisplay(); updateUI();
+  document.getElementById('ghostInput').focus();
+  running=true;
+  cancelAnimationFrame(animId);
+  lastGameTime=performance.now();
+  gameLoop();
+}
+
+// =====================================================================
+//  GAME LOOP
+// =====================================================================
+function gameLoop(){
+  const now=performance.now();
+  const dt=(now-lastGameTime)/1000; lastGameTime=now;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  moveGoal(dt); drawGoal(); drawHikari();
+
+  for(let i=balls.length-1;i>=0;i--){
+    const b=balls[i]; b.x+=b.vx; b.y+=b.vy; b.vy+=GRAVITY;
+    if(!b.scored&&Math.abs(b.x-goalX)<42&&Math.abs(b.y-goalY)<24&&b.vy>0){
+      b.scored=true; stageSc++; totalSc++;
+      updateUI(); spawnParticles(b.x,b.y);
+      showMsg('ナイスシュート！🏀','#e07030');
+      balls.splice(i,1); continue;
+    }
+    if(b.y>canvas.height+60||b.x<-60||b.x>canvas.width+60){
+      if(!b.scored) showMsg('ミス…💦','#cc4488');
+      balls.splice(i,1); continue;
+    }
+    drawBall(b);
+  }
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.12; p.life-=0.028;
+    if(p.life<=0){particles.splice(i,1);continue;}
+    ctx.save(); ctx.globalAlpha=p.life; ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2); ctx.fill(); ctx.restore();
+  }
+
+  tickTimer();
+  if(running) animId=requestAnimationFrame(gameLoop);
+}
+
+// =====================================================================
+//  PETALS
+// =====================================================================
+for(let i=0;i<22;i++){
+  const p=document.createElement('div'); p.className='petal';
+  const sz=Math.random()*8+5;
+  p.style.cssText=`left:${Math.random()*100}vw;top:${-Math.random()*20}vh;
+    width:${sz}px;height:${sz}px;
+    animation-duration:${Math.random()*7+5}s;animation-delay:${Math.random()*10}s;
+    opacity:${Math.random()*0.5+0.3};`;
+  document.body.appendChild(p);
+}
+</script>
+</body>
+</html>
