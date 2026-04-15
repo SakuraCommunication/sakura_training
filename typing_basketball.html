@@ -192,10 +192,10 @@
   </div>
   <h1>タイピングバスケ</h1>
   <div class="stage-rules">
-    🏀 <b>Stage 1</b>：1かなで1球 ／ ゴール固定 ／ 15単語 ／ 命中率<b>80%</b>でクリア<br>
-    🏀 <b>Stage 2</b>：2かなで1球 ／ ゴール左右 ／ 15単語 ／ <b>5ゴール</b>でクリア<br>
-    🏀 <b>Stage 3</b>：3かなで1球 ／ ゴール不規則 ／ 15単語 ／ <b>8ゴール</b>でクリア<br>
-    ⌨️ ローマ字入力　例）し→shi　っ→次の子音×2(tt,kk…)　ー→自動<br>
+    🏀 <b>Stage 1</b>：1かなで1球 ／ ゴール固定 ／ 15単語 ／ 命中率<b>92%</b>でクリア<br>
+    🏀 <b>Stage 2</b>：2かなで1球 ／ ゴール左右 ／ 15単語 ／ <b>7ゴール</b>でクリア<br>
+    🏀 <b>Stage 3</b>：3かなで1球 ／ ゴール不規則 ／ 20単語 ／ <b>5ゴール</b>でクリア<br>
+    ⌨️ ローマ字入力　例）し→shi　っ→次の子音×2(tt,kk…)　ー→ハイフンキー(-)<br>
     🎯 ミスすると球は飛ばない！ノーミス単語で<b>ボーナス単語追加</b>！
   </div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
@@ -358,7 +358,7 @@ async function loadLeaderboard(){
 const RT = {};
 [
   'sha,しゃ','shi,し','shu,しゅ','sho,しょ','she,しぇ',
-  'chi,ち','cha,ちゃ','chu,ちゅ','cho,ちょ','che,ちぇ',
+  'chi,ち','cha,ちゃ','chu,ちゅ','cho,ちょ','che,ちぇ','je,じぇ',
   'tsu,つ','thi,てぃ','dhi,でぃ',
   'kya,きゃ','kyu,きゅ','kyo,きょ',
   'nya,にゃ','nyu,にゅ','nyo,にょ',
@@ -395,7 +395,7 @@ for(const k of Object.keys(RT)) for(let i=1;i<k.length;i++) RTP.add(k.slice(0,i)
 const HINT={};
 for(const[rom,kana] of Object.entries(RT))
   if(!HINT[kana]||rom.length<HINT[kana].length) HINT[kana]=rom;
-HINT['っ']='(子音×2)'; HINT['ん']='nn'; HINT['ー']='(自動)';
+HINT['っ']='(子音×2)'; HINT['ん']='nn'; HINT['ー']='-';
 
 // =====================================================================
 //  小書き仮名 / splitReading / displayUnit
@@ -411,7 +411,7 @@ function splitReading(r){
   return units;
 }
 
-function effLen(units){ return units.filter(u=>u!=='ー').length; }
+function effLen(units){ return units.length; }
 
 // ★ 表示用 unit の文字：ひらがな単語はそのまま、それ以外はカタカナに変換
 function displayUnit(word, unit){
@@ -423,7 +423,7 @@ function displayUnit(word, unit){
 
 function hintOf(i,units){
   const u=units[i];
-  if(u==='ー') return '(自動)';
+  if(u==='ー') return '-';
   if(u==='っ'){
     for(let j=i+1;j<units.length;j++){
       if(units[j]!=='ー'){
@@ -435,7 +435,7 @@ function hintOf(i,units){
     return 'ltu';
   }
   if(u==='ん') return 'nn';
-  return HINT[u]||'?';
+  return HINT[u]||u;
 }
 
 // =====================================================================
@@ -446,7 +446,7 @@ function hintOf(i,units){
 const STAGE_CFG=[
   {
     id:1, label:'Stage 1', charsPerShot:1, goalMoving:false,
-    secPerChar:3, wordsPerStage:15, clearMode:'accuracy', clearValue:80,
+    secPerChar:2.0, wordsPerStage:15, clearMode:'accuracy', clearValue:92,
     pool:[
       {d:'さくら',    r:'さくら'},
       {d:'ひかり',    r:'ひかり'},
@@ -472,7 +472,7 @@ const STAGE_CFG=[
   },
   {
     id:2, label:'Stage 2', charsPerShot:2, goalMoving:'horizontal',
-    secPerChar:2.8, wordsPerStage:15, clearMode:'goals', clearValue:5,
+    secPerChar:1.8, wordsPerStage:15, clearMode:'goals', clearValue:7, rankSGoals:10,
     pool:[
       {d:'プログラム',      r:'ぷろぐらむ'},
       {d:'アルゴリズム',    r:'あるごりずむ'},
@@ -498,7 +498,7 @@ const STAGE_CFG=[
   },
   {
     id:3, label:'Stage 3', charsPerShot:3, goalMoving:'lissajous',
-    secPerChar:2.5, wordsPerStage:15, clearMode:'goals', clearValue:8,
+    secPerChar:1.6, wordsPerStage:20, clearMode:'goals', clearValue:5,
     pool:[
       {d:'さくらコミュニケーション', r:'さくらこみゅにけーしょん'},
       {d:'ソフトウェアエンジニア',   r:'そふとうぇあえんじにあ'},
@@ -520,6 +520,11 @@ const STAGE_CFG=[
       {d:'オーケストレーション',     r:'おーけすとれーしょん'},
       {d:'ロードバランシング',       r:'ろーどばらんしんぐ'},
       {d:'エンドポイント設計',       r:'えんどぽいんとせっけい'},
+      {d:'APIゲートウェイ',         r:'えーぴーあいげーとうぇい'},
+      {d:'デザインパターン',         r:'でざいんぱたーん'},
+      {d:'スケーラビリティ',         r:'すけーらびりてぃ'},
+      {d:'モノリシックアーキテクチャ', r:'ものりしっくあーきてくちゃ'},
+      {d:'ペアプログラミング',        r:'ぺあぷろぐらみんぐ'},
     ]
   }
 ];
@@ -568,6 +573,7 @@ let wordTimeLimit=0, wordTimeLeft=0, lastTick=0, lastGameTime=0;
 document.addEventListener('keydown',(e)=>{
   if(!running) return;
   if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); pushRomaji(e.key.toLowerCase()); }
+  if(e.key==='-'){ e.preventDefault(); onKana('ー'); }
 },true);
 
 function pushRomaji(key){
@@ -589,7 +595,14 @@ function pushRomaji(key){
     }
     if(!hit) break;
   }
-  if(rBuf.length>4) rBuf='';
+  // バッファが有効なプレフィックスでなければ即クリア
+  if(rBuf.length > 0) {
+    let valid = false;
+    for(let len=1; len<=rBuf.length; len++){
+      if(RTP.has(rBuf.slice(0,len)) || RT[rBuf.slice(0,len)]){ valid=true; break; }
+    }
+    if(!valid) rBuf = '';
+  }
   updateDisplay();
 }
 
@@ -601,7 +614,6 @@ function onKana(kana){
   const word=stageWords[wordIdx];
   if(!word) return;
   const units=word.units;
-  while(typedCount<units.length&&units[typedCount]==='ー') typedCount++;
   if(typedCount>=units.length) return;
 
   if(kana===units[typedCount]){
@@ -611,10 +623,9 @@ function onKana(kana){
     missedUnit=false;
 
     typedCount++;
-    while(typedCount<units.length&&units[typedCount]==='ー') typedCount++;
 
-    const nonNow  =units.slice(0,typedCount).filter(u=>u!=='ー').length;
-    const nonTotal=effLen(units);
+    const nonNow  =typedCount;
+    const nonTotal=units.length;
 
     if(nonNow>=nonTotal){
       // 単語完了：バッチちょうど or 余り分の球を飛ばす
@@ -678,7 +689,7 @@ function updateDisplay(){
   let uhtml='';
   for(let i=0;i<units.length;i++){
     const u=units[i];
-    let cls= u==='ー'?'auto': i<typedCount?'done': i===typedCount?(missedUnit?'next miss':'next'):'rest';
+    let cls= i<typedCount?'done': i===typedCount?(missedUnit?'next miss':'next'):'rest';
     // ★ 表示文字はカタカナ（またはひらがな）に変換
     const disp=displayUnit(word,u);
     const hint=hintOf(i,units);
@@ -689,7 +700,6 @@ function updateDisplay(){
   // ローマ字ガイド行（残り分）
   let rgHtml='';
   for(let i=0;i<units.length;i++){
-    if(units[i]==='ー') continue;
     const h=hintOf(i,units);
     if(i<typedCount)        rgHtml+=`<span style="color:#ddd">${h}·</span>`;
     else if(i===typedCount) rgHtml+=`<span class="rg-next">${h}·</span>`;
@@ -701,7 +711,7 @@ function updateDisplay(){
   // 進捗
   const cfg=STAGE_CFG[stageIdx];
   const wLen=effLen(word.units)||1;
-  const eff=units.slice(0,typedCount).filter(u=>u!=='ー').length;
+  const eff=typedCount;
   const pct=Math.min(100,Math.round((wordIdx/cfg.wordsPerStage+eff/wLen/cfg.wordsPerStage)*100));
   document.getElementById('progressFill').style.width=pct+'%';
 }
@@ -872,7 +882,15 @@ function showResult(){
   const acc=stageAtt>0?Math.round(stageSc/stageAtt*100):0;
   // ★ クリア判定：Stage1=命中率80%以上、Stage2/3=ゴール数
   const cleared=cfg.clearMode==='goals' ? stageSc>=cfg.clearValue : acc>=cfg.clearValue;
-  const p=getPrize(acc);
+  let p;
+  if(cfg.rankSGoals && stageSc >= cfg.rankSGoals){
+    p = {rank:'S', icon:'🥇', title:'シュートマスター！', desc:'神業シューター！完璧な命中精度です！'};
+  } else if(cfg.clearMode==='goals'){
+    const goalAcc = Math.round(stageSc / (stageAtt||1) * 100);
+    p = getPrize(goalAcc);
+  } else {
+    p = getPrize(acc);
+  }
   const isLast=stageIdx>=STAGE_CFG.length-1;
 
   // totalSc / totalAtt はゲームループ中にリアルタイム加算済みなので
@@ -985,7 +1003,8 @@ function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.fl
 
 function startStage(){
   const cfg=STAGE_CFG[stageIdx];
-  const shuffled=shuffle(cfg.pool);
+  const allWords=[...cfg.pool];
+  const shuffled=shuffle(shuffle(allWords));
   stageWords=shuffled.slice(0,cfg.wordsPerStage).map(w=>({...w,units:splitReading(w.r)}));
   stagePoolRemaining=shuffled.slice(cfg.wordsPerStage).map(w=>({...w,units:splitReading(w.r)}));
   wordIdx=0; typedCount=0; rBuf=''; missedUnit=false; wordHadMiss=false; cleanCount=0;
